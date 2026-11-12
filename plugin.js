@@ -126,51 +126,445 @@ const IMAGE_EXAMPLES = [
   imageExample("edit 2K · 2 refs", { image_input_text_tokens: 12100, image_input_image_tokens: 11800, image_output_tokens: 4096, image_count: 1 }),
 ];
 
+// The marketplace reads meta without running the plugin, so it is a plain
+// literal. MiniMax request and response bodies answer at MiniMax's own paths
+// and under /<key>; the image paths are the host's OpenAI image endpoints, so
+// their MiniMax bodies answer under /<key> only, which a downstream New API
+// gateway calls. The image API answers synchronously and has no task to re-query.
 export const meta = {
-  apiVersion: 1,
-  key: "hailuo",
-  name: "MiniMax",
-  icon: "Hailuo.Color",
-  description: {
-    en: "MiniMax-H3, H3-Highspeed, H3-Lite and H3-Max video generation (text, frames, and multimodal reference) and MiniMax-H3-Image generation and editing",
-    zh: "MiniMax-H3、H3-Highspeed、H3-Lite、H3-Max 视频生成（文生视频、首尾帧、多模态参考）与 MiniMax-H3-Image 图片生成和编辑",
+  "apiVersion": 1,
+  "key": "byaiden_minimax",
+  "name": "MiniMax H3",
+  "icon": "Minimax.Color",
+  "description": {
+    "en": "MiniMax-H3, H3-Highspeed, H3-Lite and H3-Max video generation (text, frames, and multimodal reference) and MiniMax-H3-Image generation and editing",
+    "zh": "MiniMax-H3、H3-Highspeed、H3-Lite、H3-Max 视频生成（文生视频、首尾帧、多模态参考）与 MiniMax-H3-Image 图片生成和编辑"
   },
-  version: "1.5.0",
-  author: { name: "QuantumNous" },
-  channelTypes: [35],
-  models: VIDEO_MODELS.concat(IMAGE_MODELS),
-  fetchMode: "per_task",
-  upstreams: ["vendor", "new_api"],
-  // Fallback for a channel alias that resolves to more than one model: the
-  // union of the video and image fields.
-  usageSchema: Object.assign({}, H3_USAGE_SCHEMA, IMAGE_USAGE_SCHEMA, {
-    resolution: { enum: ["480P", "768P", "2K"], description: RESOLUTION_DESCRIPTION },
-  }),
-  usageExamples: [
-    { label: "H3 768P 5s", facts: Object.assign({}, H3_EXAMPLE_FACTS, IMAGE_EXAMPLE_FACTS) },
-    { label: "text to image 4K", facts: Object.assign({}, H3_EXAMPLE_FACTS, { seconds: 0 }, IMAGE_EXAMPLES[1].facts) },
+  "version": "1.0.0",
+  "author": {
+    "name": "ByAiden",
+    "url": "https://github.com/ByAiden"
+  },
+  "website": "https://platform.minimax.io/docs/guides/image-generation",
+  "baseUrl": "https://api.minimaxi.com",
+  "models": [
+    "MiniMax-H3",
+    "MiniMax-H3-Highspeed",
+    "MiniMax-H3-Lite",
+    "MiniMax-H3-Max",
+    "MiniMax-H3-Image",
+    "MiniMax-H3-Image-Highspeed"
   ],
-  usageProfiles: [
-    { models: [H3_MODEL], schema: H3_USAGE_SCHEMA, examples: H3_EXAMPLES },
-    { models: FAST_VIDEO_MODELS, schema: H3_FAST_USAGE_SCHEMA, examples: H3_FAST_EXAMPLES },
-    { models: IMAGE_MODELS, schema: IMAGE_USAGE_SCHEMA, examples: IMAGE_EXAMPLES },
+  "fetchMode": "per_task",
+  "upstreams": [
+    "vendor",
+    "new_api"
   ],
-  // MiniMax request and response bodies at MiniMax's own paths; the gateway
-  // also serves each under /hailuo. The image paths are the host's OpenAI image
-  // endpoints at the top level, so their MiniMax bodies answer under /hailuo
-  // only, which a downstream New API gateway calls.
-  routes: [
-    { method: "POST", path: "/v2/video_generation", type: "submit", decode: "createH3Task", render: "taskCreated", models: VIDEO_MODELS },
-    { method: "GET", path: "/v2/query/video_generation/:task_id", type: "query", render: "h3TaskStatus" },
-    // The image API answers synchronously and has no task to re-query.
-    { method: "POST", path: "/v1/images/generations", type: "submit", decode: "createImage", render: "imageCreated", models: IMAGE_MODELS, retainResult: false },
-    { method: "POST", path: "/v1/images/edits", type: "submit", decode: "editImage", render: "imageCreated", models: IMAGE_MODELS, retainResult: false },
+  "usageSchema": {
+    "seconds": {
+      "type": "number",
+      "unit": "second",
+      "description": {
+        "en": "Video generation unit price",
+        "zh": "视频生成单价"
+      }
+    },
+    "resolution": {
+      "enum": [
+        "480P",
+        "768P",
+        "2K"
+      ],
+      "description": {
+        "en": "Output video resolution",
+        "zh": "输出视频分辨率"
+      }
+    },
+    "input_images": {
+      "type": "number",
+      "unit": "count",
+      "description": {
+        "en": "Input image unit price",
+        "zh": "输入图片单价"
+      }
+    },
+    "input_video_seconds": {
+      "type": "number",
+      "unit": "second",
+      "description": {
+        "en": "Input video unit price",
+        "zh": "输入视频单价"
+      }
+    },
+    "image_input_text_tokens": {
+      "type": "number",
+      "unit": "token",
+      "description": {
+        "en": "Image input text unit price",
+        "zh": "图片输入文本单价"
+      }
+    },
+    "image_input_image_tokens": {
+      "type": "number",
+      "unit": "token",
+      "description": {
+        "en": "Image reference input unit price",
+        "zh": "图片参考图输入单价"
+      }
+    },
+    "image_output_tokens": {
+      "type": "number",
+      "unit": "token",
+      "description": {
+        "en": "Image output unit price",
+        "zh": "图片输出单价"
+      }
+    },
+    "image_count": {
+      "type": "number",
+      "unit": "count",
+      "description": {
+        "en": "Image generation unit price",
+        "zh": "图片生成单价"
+      }
+    }
+  },
+  "usageExamples": [
+    {
+      "label": "H3 768P 5s",
+      "facts": {
+        "seconds": 5,
+        "resolution": "768P",
+        "input_images": 0,
+        "input_video_seconds": 0,
+        "image_input_text_tokens": 0,
+        "image_input_image_tokens": 0,
+        "image_output_tokens": 0,
+        "image_count": 0
+      }
+    },
+    {
+      "label": "text to image 4K",
+      "facts": {
+        "seconds": 0,
+        "resolution": "768P",
+        "input_images": 0,
+        "input_video_seconds": 0,
+        "image_input_text_tokens": 3200,
+        "image_input_image_tokens": 0,
+        "image_output_tokens": 16384,
+        "image_count": 1
+      }
+    }
   ],
-  protocols: [
-    { name: "openai_responses", supports: ["stream", "sync", "background"], models: VIDEO_MODELS },
-    { name: "openai_video", models: VIDEO_MODELS },
-    { name: "openai_image", models: IMAGE_MODELS },
+  "usageProfiles": [
+    {
+      "models": [
+        "MiniMax-H3"
+      ],
+      "schema": {
+        "seconds": {
+          "type": "number",
+          "unit": "second",
+          "description": {
+            "en": "Video generation unit price",
+            "zh": "视频生成单价"
+          }
+        },
+        "resolution": {
+          "enum": [
+            "768P",
+            "2K"
+          ],
+          "description": {
+            "en": "Output video resolution",
+            "zh": "输出视频分辨率"
+          }
+        },
+        "input_images": {
+          "type": "number",
+          "unit": "count",
+          "description": {
+            "en": "Input image unit price",
+            "zh": "输入图片单价"
+          }
+        },
+        "input_video_seconds": {
+          "type": "number",
+          "unit": "second",
+          "description": {
+            "en": "Input video unit price",
+            "zh": "输入视频单价"
+          }
+        }
+      },
+      "examples": [
+        {
+          "label": "H3 768P 5s",
+          "facts": {
+            "seconds": 5,
+            "resolution": "768P",
+            "input_images": 0,
+            "input_video_seconds": 0
+          }
+        },
+        {
+          "label": "H3 2K 5s",
+          "facts": {
+            "seconds": 5,
+            "resolution": "2K",
+            "input_images": 0,
+            "input_video_seconds": 0
+          }
+        },
+        {
+          "label": "H3 2K 5s · 9 images",
+          "facts": {
+            "seconds": 5,
+            "resolution": "2K",
+            "input_images": 9,
+            "input_video_seconds": 0
+          }
+        },
+        {
+          "label": "H3 2K 5s · input video",
+          "facts": {
+            "seconds": 5,
+            "resolution": "2K",
+            "input_images": 0,
+            "input_video_seconds": 15
+          }
+        }
+      ]
+    },
+    {
+      "models": [
+        "MiniMax-H3-Highspeed",
+        "MiniMax-H3-Lite",
+        "MiniMax-H3-Max"
+      ],
+      "schema": {
+        "seconds": {
+          "type": "number",
+          "unit": "second",
+          "description": {
+            "en": "Video generation unit price",
+            "zh": "视频生成单价"
+          }
+        },
+        "resolution": {
+          "enum": [
+            "480P",
+            "768P"
+          ],
+          "description": {
+            "en": "Output video resolution",
+            "zh": "输出视频分辨率"
+          }
+        },
+        "input_images": {
+          "type": "number",
+          "unit": "count",
+          "description": {
+            "en": "Input image unit price",
+            "zh": "输入图片单价"
+          }
+        },
+        "input_video_seconds": {
+          "type": "number",
+          "unit": "second",
+          "description": {
+            "en": "Input video unit price",
+            "zh": "输入视频单价"
+          }
+        }
+      },
+      "examples": [
+        {
+          "label": "480P 5s",
+          "facts": {
+            "seconds": 5,
+            "resolution": "480P",
+            "input_images": 0,
+            "input_video_seconds": 0
+          }
+        },
+        {
+          "label": "768P 5s",
+          "facts": {
+            "seconds": 5,
+            "resolution": "768P",
+            "input_images": 0,
+            "input_video_seconds": 0
+          }
+        },
+        {
+          "label": "768P 10s · 9 images",
+          "facts": {
+            "seconds": 10,
+            "resolution": "768P",
+            "input_images": 9,
+            "input_video_seconds": 0
+          }
+        },
+        {
+          "label": "768P 5s · input video",
+          "facts": {
+            "seconds": 5,
+            "resolution": "768P",
+            "input_images": 0,
+            "input_video_seconds": 15
+          }
+        }
+      ]
+    },
+    {
+      "models": [
+        "MiniMax-H3-Image",
+        "MiniMax-H3-Image-Highspeed"
+      ],
+      "schema": {
+        "image_input_text_tokens": {
+          "type": "number",
+          "unit": "token",
+          "description": {
+            "en": "Image input text unit price",
+            "zh": "图片输入文本单价"
+          }
+        },
+        "image_input_image_tokens": {
+          "type": "number",
+          "unit": "token",
+          "description": {
+            "en": "Image reference input unit price",
+            "zh": "图片参考图输入单价"
+          }
+        },
+        "image_output_tokens": {
+          "type": "number",
+          "unit": "token",
+          "description": {
+            "en": "Image output unit price",
+            "zh": "图片输出单价"
+          }
+        },
+        "image_count": {
+          "type": "number",
+          "unit": "count",
+          "description": {
+            "en": "Image generation unit price",
+            "zh": "图片生成单价"
+          }
+        }
+      },
+      "examples": [
+        {
+          "label": "text to image 2K",
+          "facts": {
+            "image_input_text_tokens": 3200,
+            "image_input_image_tokens": 0,
+            "image_output_tokens": 4096,
+            "image_count": 1
+          }
+        },
+        {
+          "label": "text to image 4K",
+          "facts": {
+            "image_input_text_tokens": 3200,
+            "image_input_image_tokens": 0,
+            "image_output_tokens": 16384,
+            "image_count": 1
+          }
+        },
+        {
+          "label": "edit 2K · 2 refs",
+          "facts": {
+            "image_input_text_tokens": 12100,
+            "image_input_image_tokens": 11800,
+            "image_output_tokens": 4096,
+            "image_count": 1
+          }
+        }
+      ]
+    }
   ],
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/v2/video_generation",
+      "type": "submit",
+      "decode": "createH3Task",
+      "render": "taskCreated",
+      "models": [
+        "MiniMax-H3",
+        "MiniMax-H3-Highspeed",
+        "MiniMax-H3-Lite",
+        "MiniMax-H3-Max"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/v2/query/video_generation/:task_id",
+      "type": "query",
+      "render": "h3TaskStatus"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/images/generations",
+      "type": "submit",
+      "decode": "createImage",
+      "render": "imageCreated",
+      "models": [
+        "MiniMax-H3-Image",
+        "MiniMax-H3-Image-Highspeed"
+      ],
+      "retainResult": false
+    },
+    {
+      "method": "POST",
+      "path": "/v1/images/edits",
+      "type": "submit",
+      "decode": "editImage",
+      "render": "imageCreated",
+      "models": [
+        "MiniMax-H3-Image",
+        "MiniMax-H3-Image-Highspeed"
+      ],
+      "retainResult": false
+    }
+  ],
+  "protocols": [
+    {
+      "name": "openai_responses",
+      "supports": [
+        "stream",
+        "sync",
+        "background"
+      ],
+      "models": [
+        "MiniMax-H3",
+        "MiniMax-H3-Highspeed",
+        "MiniMax-H3-Lite",
+        "MiniMax-H3-Max"
+      ]
+    },
+    {
+      "name": "openai_video",
+      "models": [
+        "MiniMax-H3",
+        "MiniMax-H3-Highspeed",
+        "MiniMax-H3-Lite",
+        "MiniMax-H3-Max"
+      ]
+    },
+    {
+      "name": "openai_image",
+      "models": [
+        "MiniMax-H3-Image",
+        "MiniMax-H3-Image-Highspeed"
+      ]
+    }
+  ]
 };
 
 function trimmed(value) {
@@ -195,13 +589,13 @@ function definedFields(source, keys) {
 }
 
 // On a New API channel the same plugin answers on another gateway, which
-// serves the MiniMax wire format under /hailuo.
+// serves the MiniMax wire format under the plugin's key.
 function viaGateway(ctx) {
   return Boolean(ctx.upstream && ctx.upstream.kind === "new_api");
 }
 
 function apiRoot(ctx) {
-  return ctx.baseUrl + (viaGateway(ctx) ? "/hailuo" : "");
+  return ctx.baseUrl + (viaGateway(ctx) ? "/" + meta.key : "");
 }
 
 function authHeaders(ctx) {

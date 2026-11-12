@@ -2,20 +2,21 @@
 translations:
   zh-CN: README.zh-CN.md
 ---
-# MiniMax
+# MiniMax H3
 
 **English** | [简体中文](README.zh-CN.md)
 
 Generates videos with `MiniMax-H3`, `MiniMax-H3-Highspeed`, `MiniMax-H3-Lite` and `MiniMax-H3-Max` from text, frame images, or reference images, videos and audio, and generates and edits images with `MiniMax-H3-Image` and `MiniMax-H3-Image-Highspeed`.
 
-This is version 1.5.0 of the `hailuo` plugin. It drops the Hailuo 2.3, 2.3 Fast, 02 and 01 series models; see the changelog before upgrading.
+It covers the H3 family only. The older Hailuo 2.3, 02 and 01 series models stay with the official `hailuo` plugin.
 
 ## Channel setup
 
-- Choose the MiniMax (35) channel type.
-- The key is an API key from the MiniMax open platform. The H3 video models and the image models are billed pay-as-you-go by MiniMax.
-- Set the API address to the platform your key belongs to: `https://api.minimax.io` for the global platform, `https://api.minimax.cn` for the China platform (`https://api.minimaxi.com` reaches the same China platform and connects more reliably from gateways outside mainland China). Leave `/v1` off the end.
-- To use another New API gateway as the upstream, choose New API (60) and enter that gateway's address and one of its tokens. That gateway needs this plugin version too.
+- Install the plugin, then add a channel of the Task Plugin type and bind it to `byaiden_minimax`.
+- The key is an API key from the MiniMax open platform. MiniMax bills the H3 video and image models pay-as-you-go; a Token Plan subscription key is refused for H3 video with error 2068.
+- Leave the API address empty to use `https://api.minimaxi.com`, the China platform. For a global platform key, enter `https://api.minimax.io`. `https://api.minimax.cn` also reaches the China platform but connects less reliably from gateways outside mainland China. Leave `/v1` off the end.
+- Add the models you offer to the channel. A channel can also offer them under other names through model mapping.
+- To use another New API gateway as the upstream, choose New API (60), enter that gateway's address and one of its tokens, and bind this plugin to the channel. That gateway needs this plugin too.
 
 ## Models and endpoints
 
@@ -25,14 +26,14 @@ This is version 1.5.0 of the `hailuo` plugin. It drops the Hailuo 2.3, 2.3 Fast,
 | `POST /v1/responses` | Creates a video through the Responses API, as a stream, a blocking call or a background call. A second image sets the last frame. | H3 video models |
 | `POST /v2/video_generation` | Creates a video with MiniMax's own H3 body. | H3 video models |
 | `GET /v2/query/video_generation/{task_id}` | Reads an H3 task. | H3 video models |
-
-The H3 video models are `MiniMax-H3`, `MiniMax-H3-Highspeed`, `MiniMax-H3-Lite` and `MiniMax-H3-Max`. On `MiniMax-H3-Max`, `metadata.extra.prompt_expansion_mode` (`disabled`, `balanced` or `quality`) sets prompt expansion.
 | `POST /v1/images/generations` | Text to image, OpenAI Images API: `prompt`, `n` (1 to 10), `size`, plus MiniMax's `aspect_ratio`, `area`, `output_format`, `output_compression` and `disable_prompt_enhanced`. | `MiniMax-H3-Image`, `MiniMax-H3-Image-Highspeed` |
 | `POST /v1/images/edits` | Image editing with 1 to 16 reference images, as JSON (`image` URLs or `images[].image_url`) or as OpenAI SDK multipart uploads (`image` / `image[]`). | `MiniMax-H3-Image`, `MiniMax-H3-Image-Highspeed` |
 
-The image endpoints wait for every image and answer with URLs, or with base64 data when the request sets `response_format: "b64_json"`. An image that fails or is withheld by MiniMax's content check is left out of the reply; the request fails only when no image is made. MiniMax's own image bodies and replies, failed images included, are served at `/hailuo/v1/images/generations` and `/hailuo/v1/images/edits`.
+The H3 video models are `MiniMax-H3`, `MiniMax-H3-Highspeed`, `MiniMax-H3-Lite` and `MiniMax-H3-Max`. On `MiniMax-H3-Max`, `metadata.extra.prompt_expansion_mode` (`disabled`, `balanced` or `quality`) sets prompt expansion.
 
-For videos, clients poll `GET /v1/videos/{task_id}` and download the file from `GET /v1/videos/{task_id}/content`. MiniMax's own video paths also work under `/hailuo`.
+The image endpoints wait for every image and answer with URLs, or with base64 data when the request sets `response_format: "b64_json"`. An image that fails or is withheld by MiniMax's content check is left out of the reply; the request fails only when no image is made. MiniMax's own image bodies and replies, failed images included, are served at `/byaiden_minimax/v1/images/generations` and `/byaiden_minimax/v1/images/edits`.
+
+For videos, clients poll `GET /v1/videos/{task_id}` and download the file from `GET /v1/videos/{task_id}/content`. MiniMax's own video paths also work under `/byaiden_minimax`.
 
 ## Billing
 
@@ -80,9 +81,3 @@ curl https://your-gateway.example.com/v1/videos \
 - Masks, transparent backgrounds, seeds and streamed image replies are not supported.
 - MiniMax's image API is not idempotent: a retried request makes and charges new images. A large 4K batch can take minutes; the gateway waits up to its protocol timeout (600 seconds by default).
 - Requests with `callback_url` are refused. Poll the task instead.
-
-## Tests
-
-```bash
-npm test
-```

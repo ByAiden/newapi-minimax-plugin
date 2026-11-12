@@ -49,7 +49,11 @@ const SUCCESS_BODY = {
 
 test("manifest declares the H3 video family and H3 image models only", () => {
   assert.equal(meta.apiVersion, 1);
-  assert.equal(meta.key, "hailuo");
+  assert.match(meta.key, /^[a-z0-9]+_minimax$/);
+  assert.ok(meta.key.length <= 30);
+  assert.equal(meta.version, "1.0.0");
+  assert.equal(meta.baseUrl, "https://api.minimaxi.com");
+  assert.equal(meta.channelTypes, undefined);
   assert.match(meta.version, /^\d+\.\d+\.\d+$/);
   assert.deepEqual(meta.models, ["MiniMax-H3", "MiniMax-H3-Highspeed", "MiniMax-H3-Lite", "MiniMax-H3-Max", "MiniMax-H3-Image", "MiniMax-H3-Image-Highspeed"]);
   for (const name of ["MiniMax-Hailuo-2.3", "MiniMax-Hailuo-02", "T2V-01", "I2V-01"]) assert.ok(!JSON.stringify(meta).includes(name));
@@ -211,12 +215,12 @@ test("a mapped image model sends the upstream name", () => {
   assert.equal(request.url, BASE + "/v1/images/generations");
 });
 
-test("a New API upstream is called under /hailuo", () => {
+test("a New API upstream is called under the plugin key", () => {
   const image = imageProtocol("generate", { model: "MiniMax-H3-Image", prompt: "x" });
-  assert.equal(plugin.buildSubmitRequest(driver(image, { upstream: { kind: "new_api" } })).url, BASE + "/hailuo/v1/images/generations");
+  assert.equal(plugin.buildSubmitRequest(driver(image, { upstream: { kind: "new_api" } })).url, BASE + "/" + meta.key + "/v1/images/generations");
   const video = protocols.openai_video.decodeRequest(jsonCtx({ prompt: "A fox" }, { model: "MiniMax-H3" }));
-  assert.equal(plugin.buildSubmitRequest(driver(video, { upstream: { kind: "new_api" } })).url, BASE + "/hailuo/v2/video_generation");
-  assert.equal(plugin.buildQueryRequest({ taskId: "abc", baseUrl: BASE, apiKey: "k", upstream: { kind: "new_api" } }).url, BASE + "/hailuo/v2/query/video_generation/abc");
+  assert.equal(plugin.buildSubmitRequest(driver(video, { upstream: { kind: "new_api" } })).url, BASE + "/" + meta.key + "/v2/video_generation");
+  assert.equal(plugin.buildQueryRequest({ taskId: "abc", baseUrl: BASE, apiKey: "k", upstream: { kind: "new_api" } }).url, BASE + "/" + meta.key + "/v2/query/video_generation/abc");
 });
 
 test("H3 text to video builds the /v2 body and reserves the request", () => {
@@ -336,4 +340,12 @@ test("a mapped video alias follows the upstream model's rules", () => {
   const request = plugin.buildSubmitRequest(driver(intent, { model: "cheap-video", upstreamModel: "MiniMax-H3-Lite" }));
   assert.equal(request.body.model, "MiniMax-H3-Lite");
   assert.equal(request.body.resolution, "480P");
+});
+
+test("meta is a JSON object literal the marketplace can read without running the plugin", async () => {
+  const { readFileSync } = await import("node:fs");
+  const source = readFileSync(new URL("../plugin.js", import.meta.url), "utf8");
+  const start = source.indexOf("export const meta = ") + "export const meta = ".length;
+  const literal = source.slice(start, source.indexOf(";\n", start));
+  assert.deepEqual(JSON.parse(literal), JSON.parse(JSON.stringify(meta)));
 });

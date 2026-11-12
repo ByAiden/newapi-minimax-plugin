@@ -1,20 +1,21 @@
 ---
 locale: zh-CN
 ---
-# MiniMax
+# MiniMax H3
 
 [English](README.md) | **简体中文**
 
 用 `MiniMax-H3`、`MiniMax-H3-Highspeed`、`MiniMax-H3-Lite`、`MiniMax-H3-Max` 根据文字、首尾帧，或参考图片、视频和音频生成视频；用 `MiniMax-H3-Image` 和 `MiniMax-H3-Image-Highspeed` 生成和编辑图片。
 
-这是 `hailuo` 插件的 1.5.0 版本，删除了海螺 2.3、2.3 Fast、02 和 01 系列模型。升级前请先看更新日志。
+本插件只覆盖 H3 系列。较早的海螺 2.3、02 和 01 系列模型请继续用官方的 `hailuo` 插件。
 
 ## 渠道设置
 
-- 渠道类型选 MiniMax (35)。
-- 密钥填 MiniMax 开放平台创建的 API Key。H3 视频模型和图片模型由 MiniMax 按量计费。
-- API 地址填 Key 所属平台的地址：国际站 `https://api.minimax.io`，国内站 `https://api.minimax.cn`（`https://api.minimaxi.com` 也指向国内站，网关在海外时连接更稳定），末尾不要加 `/v1`。
-- 如果上游是另一台 New API 网关，渠道类型选 New API (60)，填写该网关的地址和它的令牌。上游网关也需要安装本版本插件。
+- 安装插件后，新建一个「任务插件」类型的渠道，绑定 `byaiden_minimax`。
+- 密钥填 MiniMax 开放平台创建的 API Key。H3 视频和图片模型由 MiniMax 按量计费；Token Plan 套餐的 Key 调用 H3 视频会被拒绝（错误码 2068）。
+- API 地址留空时使用国内站 `https://api.minimaxi.com`。国际站的 Key 请填 `https://api.minimax.io`。`https://api.minimax.cn` 也指向国内站，但网关在海外时连接不太稳定。末尾不要加 `/v1`。
+- 把要提供的模型加到渠道里；也可以通过模型映射用别的名字提供。
+- 如果上游是另一台 New API 网关，渠道类型选 New API (60)，填写该网关的地址和它的令牌，并把本插件绑定到该渠道。上游网关也需要安装本插件。
 
 ## 模型与接口
 
@@ -24,14 +25,14 @@ locale: zh-CN
 | `POST /v1/responses` | 通过 Responses API 生成视频，支持流式、同步等待和后台三种调用方式。第二张图作为尾帧。 | H3 视频模型 |
 | `POST /v2/video_generation` | 用 MiniMax 原生的 H3 请求体生成视频。 | H3 视频模型 |
 | `GET /v2/query/video_generation/{task_id}` | 查询 H3 任务。 | H3 视频模型 |
-
-H3 视频模型包括 `MiniMax-H3`、`MiniMax-H3-Highspeed`、`MiniMax-H3-Lite` 和 `MiniMax-H3-Max`。`MiniMax-H3-Max` 可以用 `metadata.extra.prompt_expansion_mode`（`disabled`、`balanced` 或 `quality`）设置提示词扩写。
 | `POST /v1/images/generations` | 文生图，OpenAI 图片接口：`prompt`、`n`（1 到 10）、`size`，另支持 MiniMax 的 `aspect_ratio`、`area`、`output_format`、`output_compression` 和 `disable_prompt_enhanced`。 | `MiniMax-H3-Image`、`MiniMax-H3-Image-Highspeed` |
 | `POST /v1/images/edits` | 图片编辑，1 到 16 张参考图。可以用 JSON（`image` 传 URL，或 `images[].image_url`），也可以用 OpenAI SDK 的 multipart 上传（`image` / `image[]`）。 | `MiniMax-H3-Image`、`MiniMax-H3-Image-Highspeed` |
 
-图片接口等全部图片生成完才返回，默认返回 URL；请求里设 `response_format: "b64_json"` 时返回 base64。单张图片生成失败或被 MiniMax 内容审核拦下时，不放进返回结果；只有一张都没生成出来，整个请求才算失败。MiniMax 原生的图片请求体和返回（包括失败的图片）走 `/hailuo/v1/images/generations` 和 `/hailuo/v1/images/edits`。
+H3 视频模型包括 `MiniMax-H3`、`MiniMax-H3-Highspeed`、`MiniMax-H3-Lite` 和 `MiniMax-H3-Max`。`MiniMax-H3-Max` 可以用 `metadata.extra.prompt_expansion_mode`（`disabled`、`balanced` 或 `quality`）设置提示词扩写。
 
-视频由客户端轮询 `GET /v1/videos/{task_id}`，完成后从 `GET /v1/videos/{task_id}/content` 下载。MiniMax 原生的视频路径也可以加 `/hailuo` 前缀调用。
+图片接口等全部图片生成完才返回，默认返回 URL；请求里设 `response_format: "b64_json"` 时返回 base64。单张图片生成失败或被 MiniMax 内容审核拦下时，不放进返回结果；只有一张都没生成出来，整个请求才算失败。MiniMax 原生的图片请求体和返回（包括失败的图片）走 `/byaiden_minimax/v1/images/generations` 和 `/byaiden_minimax/v1/images/edits`。
+
+视频由客户端轮询 `GET /v1/videos/{task_id}`，完成后从 `GET /v1/videos/{task_id}/content` 下载。MiniMax 原生的视频路径也可以加 `/byaiden_minimax` 前缀调用。
 
 ## 计费
 
@@ -79,9 +80,3 @@ curl https://your-gateway.example.com/v1/videos \
 - 不支持蒙版、透明背景、随机种子和流式返回图片。
 - MiniMax 的图片接口不是幂等的：请求重试会重新生成、重新收费。4K 多张图可能要好几分钟，网关最多等到协议超时（默认 600 秒）。
 - 带 `callback_url` 的请求会被拒绝，请改为查询任务。
-
-## 测试
-
-```bash
-npm test
-```
