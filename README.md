@@ -14,7 +14,7 @@ This is version 1.5.0 of the `hailuo` plugin. It drops the Hailuo 2.3, 2.3 Fast,
 
 - Choose the MiniMax (35) channel type.
 - The key is an API key from the MiniMax open platform. The H3 video models and the image models are billed pay-as-you-go by MiniMax.
-- Set the API address to the platform your key belongs to: `https://api.minimax.io` for the global platform, `https://api.minimax.cn` for the China platform (`https://api.minimaxi.com` reaches the same China platform). Leave `/v1` off the end.
+- Set the API address to the platform your key belongs to: `https://api.minimax.io` for the global platform, `https://api.minimax.cn` for the China platform (`https://api.minimaxi.com` reaches the same China platform and connects more reliably from gateways outside mainland China). Leave `/v1` off the end.
 - To use another New API gateway as the upstream, choose New API (60) and enter that gateway's address and one of its tokens. That gateway needs this plugin version too.
 
 ## Models and endpoints

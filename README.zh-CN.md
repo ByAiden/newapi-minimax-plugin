@@ -13,7 +13,7 @@ locale: zh-CN
 
 - 渠道类型选 MiniMax (35)。
 - 密钥填 MiniMax 开放平台创建的 API Key。H3 视频模型和图片模型由 MiniMax 按量计费。
-- API 地址填 Key 所属平台的地址：国际站 `https://api.minimax.io`，国内站 `https://api.minimax.cn`（`https://api.minimaxi.com` 也指向国内站），末尾不要加 `/v1`。
+- API 地址填 Key 所属平台的地址：国际站 `https://api.minimax.io`，国内站 `https://api.minimax.cn`（`https://api.minimaxi.com` 也指向国内站，网关在海外时连接更稳定），末尾不要加 `/v1`。
 - 如果上游是另一台 New API 网关，渠道类型选 New API (60)，填写该网关的地址和它的令牌。上游网关也需要安装本版本插件。
 
 ## 模型与接口
