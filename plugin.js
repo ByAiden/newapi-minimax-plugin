@@ -460,8 +460,10 @@ const IMAGE_MAX_PIXELS = 20000000;
 const IMAGE_AREA_PIXELS = { "1K": 1024 * 1024, "2K": 2048 * 2048, "4K": 4096 * 4096 };
 const IMAGE_DEFAULT_AREA = "4K";
 const IMAGE_OUTPUT_FORMATS = ["png", "jpeg", "jpg", "webp"];
-// One output image token covers 1024 pixels (2720x1536 is 4080 tokens).
+// One output image token covers 1024 pixels (2720x1536 is 4080 tokens), with
+// at least 4096 tokens an image: a live 1024x1024 image was billed 4096.
 const IMAGE_PIXELS_PER_TOKEN = 1024;
+const IMAGE_MIN_OUTPUT_TOKENS = 4096;
 // MiniMax reports input tokens only after generation: the reservation holds
 // these per delivered image and settles on the reported usage. Its examples
 // show about 3,200 text tokens for a short text-to-image prompt and about
@@ -578,7 +580,7 @@ function checkImageBody(operation, body) {
     facts: {
       image_input_text_tokens: count * textTokens,
       image_input_image_tokens: count * references * IMAGE_IMAGE_TOKENS_PER_REFERENCE,
-      image_output_tokens: count * Math.ceil(size.pixels / IMAGE_PIXELS_PER_TOKEN),
+      image_output_tokens: count * Math.max(Math.ceil(size.pixels / IMAGE_PIXELS_PER_TOKEN), IMAGE_MIN_OUTPUT_TOKENS),
       image_count: count,
     },
   };

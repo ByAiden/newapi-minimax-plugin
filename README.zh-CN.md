@@ -13,7 +13,7 @@ locale: zh-CN
 
 - 渠道类型选 MiniMax (35)。
 - 密钥填 MiniMax 开放平台创建的 API Key。H3 视频模型和图片模型由 MiniMax 按量计费。
-- API 地址填 Key 所属平台的地址：国际站 `https://api.minimax.io`，国内站 `https://api.minimaxi.com`，末尾不要加 `/v1`。
+- API 地址填 Key 所属平台的地址：国际站 `https://api.minimax.io`，国内站 `https://api.minimax.cn`（`https://api.minimaxi.com` 也指向国内站），末尾不要加 `/v1`。
 - 如果上游是另一台 New API 网关，渠道类型选 New API (60)，填写该网关的地址和它的令牌。上游网关也需要安装本版本插件。
 
 ## 模型与接口
@@ -50,7 +50,7 @@ H3 视频模型（每个模型单独定价）：
 
 - “图片输入文本单价”“图片参考图输入单价”“图片输出单价”都是 token 单价。MiniMax 每成功生成一张图，就把输入 token 计一次；提示词扩写也会增加文本 token。
 - “图片生成单价”按成功生成的张数计费，适合不想按 token、只想按张定价的情况。
-- 提交时先预扣一个估算值：输出 token 按请求的尺寸算（每 1024 像素 1 个 token；`auto` 尺寸按 `area` 算，默认 4K），输入 token 按偏高的估算值算。最后按 MiniMax 报告的实际用量结算，只收成功生成的图片。
+- 提交时先预扣一个估算值：输出 token 按请求的尺寸算（每 1024 像素 1 个 token，每张至少 4096 个；`auto` 尺寸按 `area` 算，默认 4K），输入 token 按偏高的估算值算。最后按 MiniMax 报告的实际用量结算，只收成功生成的图片。
 
 例如想按 `MiniMax-H3-Image` 的官方价格加价 `M` 倍，可以保存这样的任务表达式：`tier("base", (u("image_input_text_tokens") * 2.3 + u("image_input_image_tokens") * 1.5 + u("image_output_tokens") * 3.8) / 1000000 * M)`。保存前请先核对 MiniMax 当前价格；`MiniMax-H3-Image-Highspeed` 的图片 token 单价更高。
 

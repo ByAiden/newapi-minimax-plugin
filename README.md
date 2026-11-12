@@ -14,7 +14,7 @@ This is version 1.5.0 of the `hailuo` plugin. It drops the Hailuo 2.3, 2.3 Fast,
 
 - Choose the MiniMax (35) channel type.
 - The key is an API key from the MiniMax open platform. The H3 video models and the image models are billed pay-as-you-go by MiniMax.
-- Set the API address to the platform your key belongs to: `https://api.minimax.io` for the global platform, `https://api.minimaxi.com` for the China platform. Leave `/v1` off the end.
+- Set the API address to the platform your key belongs to: `https://api.minimax.io` for the global platform, `https://api.minimax.cn` for the China platform (`https://api.minimaxi.com` reaches the same China platform). Leave `/v1` off the end.
 - To use another New API gateway as the upstream, choose New API (60) and enter that gateway's address and one of its tokens. That gateway needs this plugin version too.
 
 ## Models and endpoints
@@ -51,7 +51,7 @@ For example, `MiniMax-H3-Highspeed` at MiniMax's list price times a margin `M`:
 
 - "Image input text unit price", "Image reference input unit price" and "Image output unit price" are token prices. MiniMax counts the input tokens once for every image delivered, and prompt enhancement adds to the text tokens.
 - "Image generation unit price" is charged per delivered image, for a per-image price instead of token prices.
-- The request holds an estimate: the output tokens of the requested size (one token per 1024 pixels; `auto` sizes count their `area`, 4K by default), and generous input estimates. It then settles on the usage MiniMax reports, so only delivered images are charged.
+- The request holds an estimate: the output tokens of the requested size (one token per 1024 pixels and at least 4096 an image; `auto` sizes count their `area`, 4K by default), and generous input estimates. It then settles on the usage MiniMax reports, so only delivered images are charged.
 
 For example, to charge MiniMax's list price for `MiniMax-H3-Image` with a margin `M`, save a task expression such as `tier("base", (u("image_input_text_tokens") * 2.3 + u("image_input_image_tokens") * 1.5 + u("image_output_tokens") * 3.8) / 1000000 * M)`. Check MiniMax's current prices first; `MiniMax-H3-Image-Highspeed` costs more per image token.
 

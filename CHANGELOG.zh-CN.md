@@ -28,4 +28,4 @@ locale: "zh-CN"
 
 - **升级前：**等所有海螺 2.3、02 和 01 系列任务跑完。升级后网关不再查询这些任务，也不再提供它们的视频下载。
 - **模型和价格：**从 MiniMax 渠道里删掉已移除的模型，加上要开放的新视频和图片模型，每个新模型先设好价格再开放使用。
-- **API 地址：**把渠道的 API 地址设为 Key 所属平台的地址：`https://api.minimax.io` 或 `https://api.minimaxi.com`。
+- **API 地址：**把渠道的 API 地址设为 Key 所属平台的地址：`https://api.minimax.io` 或 `https://api.minimax.cn`。

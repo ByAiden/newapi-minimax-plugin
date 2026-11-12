@@ -83,7 +83,7 @@ test("text to image sends MiniMax's body and reserves the requested output", () 
   // The host answers b64_json itself, so MiniMax always returns URLs.
   assert.deepEqual(request.body, { model: "MiniMax-H3-Image", prompt: "A cat", n: 2, size: "2720x1536" });
   const facts = plugin.extractUsage(driver(intent));
-  assert.deepEqual(facts, { image_input_text_tokens: 2 * (5 + 8192), image_input_image_tokens: 0, image_output_tokens: 2 * 4080, image_count: 2 });
+  assert.deepEqual(facts, { image_input_text_tokens: 2 * (5 + 8192), image_input_image_tokens: 0, image_output_tokens: 2 * 4096, image_count: 2 });
   assert.deepEqual(plugin.extractUsage(Object.assign(driver(intent), { usagePurpose: "billing_ratios" })), { image_count: 2 });
 });
 
@@ -91,7 +91,8 @@ test("auto size reserves the area level, 4K by default", () => {
   const facts = (value) => plugin.extractUsage(driver(imageProtocol("generate", Object.assign({ model: "MiniMax-H3-Image", prompt: "x" }, value))));
   assert.equal(facts({}).image_output_tokens, 16384);
   assert.equal(facts({ area: "2K", aspect_ratio: "16:9" }).image_output_tokens, 4096);
-  assert.equal(facts({ size: "auto", area: "1K" }).image_output_tokens, 1024);
+  // MiniMax billed a live 1024x1024 image 4096 output tokens.
+  assert.equal(facts({ size: "auto", area: "1K" }).image_output_tokens, 4096);
 });
 
 test("image requests MiniMax would reject fail before billing", () => {

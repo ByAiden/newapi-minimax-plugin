@@ -30,4 +30,4 @@ translations:
 
 - **Before upgrading:** let every Hailuo 2.3, 02 and 01 series task finish. The gateway no longer polls those tasks or serves their videos.
 - **Models and pricing:** remove the dropped models from your MiniMax channels, add the new video and image models you offer, and save a price for each new model before offering it.
-- **API address:** set the channel's API address to `https://api.minimax.io` or `https://api.minimaxi.com`, the platform of your key.
+- **API address:** set the channel's API address to `https://api.minimax.io` or `https://api.minimax.cn`, the platform of your key.
