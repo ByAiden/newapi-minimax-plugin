@@ -12,6 +12,7 @@ const plugin = await import("../plugin.js");
 const { meta, native, protocols } = plugin;
 
 const BASE = "https://api.minimax.io";
+const VIDEO = ["MiniMax-H3", "MiniMax-H3-Highspeed", "MiniMax-H3-Lite", "MiniMax-H3-Max"];
 
 function driver(intent, extra) {
   return Object.assign(
@@ -46,11 +47,11 @@ const SUCCESS_BODY = {
   request_id: "req",
 };
 
-test("manifest declares the H3 video and H3 image models only", () => {
+test("manifest declares the H3 video family and H3 image models only", () => {
   assert.equal(meta.apiVersion, 1);
   assert.equal(meta.key, "hailuo");
   assert.match(meta.version, /^\d+\.\d+\.\d+$/);
-  assert.deepEqual(meta.models, ["MiniMax-H3", "MiniMax-H3-Image", "MiniMax-H3-Image-Highspeed"]);
+  assert.deepEqual(meta.models, ["MiniMax-H3", "MiniMax-H3-Highspeed", "MiniMax-H3-Lite", "MiniMax-H3-Max", "MiniMax-H3-Image", "MiniMax-H3-Image-Highspeed"]);
   for (const name of ["MiniMax-Hailuo-2.3", "MiniMax-Hailuo-02", "T2V-01", "I2V-01"]) assert.ok(!JSON.stringify(meta).includes(name));
   const keys = Object.keys(meta.usageSchema).sort();
   for (const example of meta.usageExamples) assert.deepEqual(Object.keys(example.facts).sort(), keys);
@@ -65,8 +66,8 @@ test("manifest declares the H3 video and H3 image models only", () => {
   assert.deepEqual(
     meta.protocols.map((p) => [p.name, p.models]),
     [
-      ["openai_responses", ["MiniMax-H3"]],
-      ["openai_video", ["MiniMax-H3"]],
+      ["openai_responses", VIDEO],
+      ["openai_video", VIDEO],
       ["openai_image", ["MiniMax-H3-Image", "MiniMax-H3-Image-Highspeed"]],
     ],
   );
@@ -273,4 +274,65 @@ test("errors come back in MiniMax's typed format", () => {
   });
   assert.equal(native.error({}, { httpStatus: 402, message: "m" }).error.type, "insufficient_balance_error");
   assert.equal(native.error({}, { httpStatus: 503, message: "m" }).error.type, "server_error");
+});
+
+function video(model, value) {
+  return protocols.openai_video.decodeRequest(jsonCtx(value, { model: model }));
+}
+
+test("each H3 video model has its own resolutions and price profile", () => {
+  const profile = (model) => meta.usageProfiles.find((p) => p.models.includes(model));
+  assert.deepEqual(profile("MiniMax-H3").schema.resolution.enum, ["768P", "2K"]);
+  for (const model of VIDEO.slice(1)) assert.deepEqual(profile(model).schema.resolution.enum, ["480P", "768P"]);
+  assert.deepEqual(meta.usageSchema.resolution.enum, ["480P", "768P", "2K"]);
+  for (const model of VIDEO.slice(1)) {
+    const intent = video(model, { prompt: "A fox", seconds: 6, size: "480P" });
+    const request = plugin.buildSubmitRequest(driver(intent));
+    assert.equal(request.url, BASE + "/v2/video_generation");
+    assert.deepEqual(request.body, { model: model, content: [{ type: "text", text: "A fox" }], resolution: "480P", duration: 6, ratio: "16:9" });
+    assert.deepEqual(plugin.extractUsage(driver(intent)), { seconds: 6, resolution: "480P", input_images: 0, input_video_seconds: 0 });
+    assert.equal(plugin.buildSubmitRequest(driver(video(model, { prompt: "x" }))).body.resolution, "768P");
+    assert.throws(() => video(model, { prompt: "x", size: "2K" }), /resolution must be 480P or 768P/);
+  }
+  assert.throws(() => video("MiniMax-H3", { prompt: "x", size: "480P" }), /resolution must be 768P or 2K/);
+});
+
+test("H3-Max starts at 5 seconds and takes extra options", () => {
+  assert.throws(() => video("MiniMax-H3-Max", { prompt: "x", seconds: 4 }), /MiniMax-H3-Max duration must be an integer between 5 and 15/);
+  assert.doesNotThrow(() => video("MiniMax-H3-Lite", { prompt: "x", seconds: 4 }));
+  const intent = video("MiniMax-H3-Max", { prompt: "x", seconds: 5, metadata: { extra: { prompt_expansion_mode: "quality" } } });
+  assert.deepEqual(plugin.buildSubmitRequest(driver(intent)).body.extra, { prompt_expansion_mode: "quality" });
+  assert.throws(() => video("MiniMax-H3-Max", { prompt: "x", metadata: { extra: { prompt_expansion_mode: "balance" } } }), /prompt_expansion_mode/);
+  assert.throws(() => video("MiniMax-H3-Max", { prompt: "x", metadata: { extra: { seed: 1 } } }), /extra.seed/);
+  assert.throws(() => video("MiniMax-H3", { prompt: "x", metadata: { extra: { prompt_expansion_mode: "quality" } } }), /MiniMax-H3-Max only/);
+  assert.throws(() => native.createH3Task(jsonCtx({ model: "MiniMax-H3-Max", content: [{ type: "text", text: "x" }], duration: 4 })), /between 5 and 15/);
+});
+
+test("H3-Lite reference videos get a concrete ratio; frames stay adaptive", () => {
+  const refs = { prompt: "x", metadata: { reference_audio: "https://a/a.mp3" } };
+  assert.equal(plugin.buildSubmitRequest(driver(video("MiniMax-H3-Lite", refs))).body.ratio, "16:9");
+  assert.equal(plugin.buildSubmitRequest(driver(video("MiniMax-H3-Highspeed", refs))).body.ratio, "adaptive");
+  assert.equal(plugin.buildSubmitRequest(driver(video("MiniMax-H3-Lite", { prompt: "x", image: "https://a/f.png" }))).body.ratio, "adaptive");
+  assert.equal(plugin.buildSubmitRequest(driver(video("MiniMax-H3-Lite", { prompt: "x", metadata: Object.assign({ ratio: "9:16" }, refs.metadata) }))).body.ratio, "9:16");
+});
+
+test("native requests without a resolution reserve each model's dearest", () => {
+  const usage = (model) => plugin.extractUsage(driver(native.createH3Task(jsonCtx({ model: model, content: [{ type: "text", text: "x" }] }))));
+  assert.deepEqual(usage("MiniMax-H3"), { seconds: 15, resolution: "2K", input_images: 0, input_video_seconds: 0 });
+  assert.deepEqual(usage("MiniMax-H3-Lite"), { seconds: 15, resolution: "768P", input_images: 0, input_video_seconds: 0 });
+});
+
+test("completion settles on resolutions the model renders", () => {
+  const done = (resolution, seconds) => ({ task: { status: "succeeded", resolution: resolution, usage: { output_seconds: seconds } } });
+  const settle = (model, body) => plugin.extractUsageOnComplete({ model: model, upstreamModel: model }, {}, body);
+  assert.deepEqual(settle("MiniMax-H3-Highspeed", done("480P", 6)), { resolution: "480P", seconds: 6 });
+  assert.deepEqual(settle("MiniMax-H3", done("480P", 6)), { seconds: 6 });
+  assert.deepEqual(settle("MiniMax-H3-Max", done("768P", 4)), { resolution: "768P" });
+});
+
+test("a mapped video alias follows the upstream model's rules", () => {
+  const intent = protocols.openai_video.decodeRequest(jsonCtx({ prompt: "x", size: "480P" }, { model: "cheap-video", upstreamModel: "MiniMax-H3-Lite" }));
+  const request = plugin.buildSubmitRequest(driver(intent, { model: "cheap-video", upstreamModel: "MiniMax-H3-Lite" }));
+  assert.equal(request.body.model, "MiniMax-H3-Lite");
+  assert.equal(request.body.resolution, "480P");
 });

@@ -1,4 +1,5 @@
-// MiniMax-H3 video generation on MiniMax's /v2 video API, and MiniMax-H3-Image
+// MiniMax-H3 family video generation (H3, H3-Highspeed, H3-Lite, H3-Max) on
+// MiniMax's /v2 video API, and MiniMax-H3-Image
 // text-to-image and image editing on its synchronous OpenAI-style image API.
 
 const VIDEO_SECONDS_FIELD = {
@@ -7,12 +8,14 @@ const VIDEO_SECONDS_FIELD = {
   description: { en: "Video generation unit price", zh: "视频生成单价" },
 };
 
-// MiniMax-H3 allows duration 4 to 15 and renders 768P or 2K.
+const RESOLUTION_DESCRIPTION = { en: "Output video resolution", zh: "输出视频分辨率" };
+
+// MiniMax-H3 renders 768P or 2K.
 const H3_USAGE_SCHEMA = {
   seconds: VIDEO_SECONDS_FIELD,
   resolution: {
     enum: ["768P", "2K"],
-    description: { en: "Output video resolution", zh: "输出视频分辨率" },
+    description: RESOLUTION_DESCRIPTION,
   },
   // Input image count (estimated at submit, actual on completion).
   input_images: {
@@ -27,6 +30,15 @@ const H3_USAGE_SCHEMA = {
     description: { en: "Input video unit price", zh: "输入视频单价" },
   },
 };
+
+// H3-Highspeed, H3-Lite and H3-Max render 480P or 768P; the other fields are
+// MiniMax-H3's.
+const H3_FAST_USAGE_SCHEMA = Object.assign({}, H3_USAGE_SCHEMA, {
+  resolution: {
+    enum: ["480P", "768P"],
+    description: RESOLUTION_DESCRIPTION,
+  },
+});
 
 // MiniMax bills an image request by tokens: input text (prompt enhancement
 // included), input reference images and output images, each counted for every
@@ -55,6 +67,22 @@ const IMAGE_USAGE_SCHEMA = {
 };
 
 const H3_MODEL = "MiniMax-H3";
+// What each H3 video model renders, the dearest resolution last
+// (platform.minimax.io/docs/api-reference/video-generation-v2-create).
+// H3-Lite has no adaptive ratio for reference media; only H3-Max takes extra.
+const VIDEO_PROFILES = {
+  "MiniMax-H3": { resolutions: ["768P", "2K"], minDuration: 4 },
+  "MiniMax-H3-Highspeed": { resolutions: ["480P", "768P"], minDuration: 4 },
+  "MiniMax-H3-Lite": { resolutions: ["480P", "768P"], minDuration: 4, fixedReferenceRatio: true },
+  "MiniMax-H3-Max": { resolutions: ["480P", "768P"], minDuration: 5, extra: true },
+};
+const VIDEO_MODELS = Object.keys(VIDEO_PROFILES);
+const FAST_VIDEO_MODELS = VIDEO_MODELS.filter(function (model) {
+  return model !== H3_MODEL;
+});
+// A mapped upstream name the plugin does not list may render anything the
+// family renders.
+const ANY_VIDEO_PROFILE = { resolutions: ["480P", "768P", "2K"], minDuration: 4 };
 const IMAGE_MODELS = ["MiniMax-H3-Image", "MiniMax-H3-Image-Highspeed"];
 
 // The vendor fields the OpenAI-style video requests carry in metadata; the
@@ -83,6 +111,13 @@ const H3_EXAMPLES = [
   h3Example("H3 2K 5s · input video", { resolution: "2K", input_video_seconds: 15 }),
 ];
 
+const H3_FAST_EXAMPLES = [
+  h3Example("480P 5s", { resolution: "480P" }),
+  h3Example("768P 5s", {}),
+  h3Example("768P 10s · 9 images", { seconds: 10, input_images: 9 }),
+  h3Example("768P 5s · input video", { input_video_seconds: 15 }),
+];
+
 // Token counts follow MiniMax's own examples: an output image costs one token
 // per 1024 pixels, so 2K 1:1 is 4096 tokens and 4K 1:1 is 16384.
 const IMAGE_EXAMPLES = [
@@ -97,24 +132,27 @@ export const meta = {
   name: "MiniMax",
   icon: "Hailuo.Color",
   description: {
-    en: "MiniMax-H3 video generation (text, frames, and multimodal reference) and MiniMax-H3-Image generation and editing",
-    zh: "MiniMax-H3 视频生成（文生视频、首尾帧、多模态参考）与 MiniMax-H3-Image 图片生成和编辑",
+    en: "MiniMax-H3, H3-Highspeed, H3-Lite and H3-Max video generation (text, frames, and multimodal reference) and MiniMax-H3-Image generation and editing",
+    zh: "MiniMax-H3、H3-Highspeed、H3-Lite、H3-Max 视频生成（文生视频、首尾帧、多模态参考）与 MiniMax-H3-Image 图片生成和编辑",
   },
   version: "1.5.0",
   author: { name: "QuantumNous" },
   channelTypes: [35],
-  models: [H3_MODEL].concat(IMAGE_MODELS),
+  models: VIDEO_MODELS.concat(IMAGE_MODELS),
   fetchMode: "per_task",
   upstreams: ["vendor", "new_api"],
   // Fallback for a channel alias that resolves to more than one model: the
   // union of the video and image fields.
-  usageSchema: Object.assign({}, H3_USAGE_SCHEMA, IMAGE_USAGE_SCHEMA),
+  usageSchema: Object.assign({}, H3_USAGE_SCHEMA, IMAGE_USAGE_SCHEMA, {
+    resolution: { enum: ["480P", "768P", "2K"], description: RESOLUTION_DESCRIPTION },
+  }),
   usageExamples: [
     { label: "H3 768P 5s", facts: Object.assign({}, H3_EXAMPLE_FACTS, IMAGE_EXAMPLE_FACTS) },
     { label: "text to image 4K", facts: Object.assign({}, H3_EXAMPLE_FACTS, { seconds: 0 }, IMAGE_EXAMPLES[1].facts) },
   ],
   usageProfiles: [
     { models: [H3_MODEL], schema: H3_USAGE_SCHEMA, examples: H3_EXAMPLES },
+    { models: FAST_VIDEO_MODELS, schema: H3_FAST_USAGE_SCHEMA, examples: H3_FAST_EXAMPLES },
     { models: IMAGE_MODELS, schema: IMAGE_USAGE_SCHEMA, examples: IMAGE_EXAMPLES },
   ],
   // MiniMax request and response bodies at MiniMax's own paths; the gateway
@@ -122,15 +160,15 @@ export const meta = {
   // endpoints at the top level, so their MiniMax bodies answer under /hailuo
   // only, which a downstream New API gateway calls.
   routes: [
-    { method: "POST", path: "/v2/video_generation", type: "submit", decode: "createH3Task", render: "taskCreated", models: [H3_MODEL] },
+    { method: "POST", path: "/v2/video_generation", type: "submit", decode: "createH3Task", render: "taskCreated", models: VIDEO_MODELS },
     { method: "GET", path: "/v2/query/video_generation/:task_id", type: "query", render: "h3TaskStatus" },
     // The image API answers synchronously and has no task to re-query.
     { method: "POST", path: "/v1/images/generations", type: "submit", decode: "createImage", render: "imageCreated", models: IMAGE_MODELS, retainResult: false },
     { method: "POST", path: "/v1/images/edits", type: "submit", decode: "editImage", render: "imageCreated", models: IMAGE_MODELS, retainResult: false },
   ],
   protocols: [
-    { name: "openai_responses", supports: ["stream", "sync", "background"], models: [H3_MODEL] },
-    { name: "openai_video", models: [H3_MODEL] },
+    { name: "openai_responses", supports: ["stream", "sync", "background"], models: VIDEO_MODELS },
+    { name: "openai_video", models: VIDEO_MODELS },
     { name: "openai_image", models: IMAGE_MODELS },
   ],
 };
@@ -184,7 +222,6 @@ function imageTask(ctx) {
 // ---------------------------------------------------------------------------
 // MiniMax-H3 video
 
-const H3_MIN_DURATION = 4;
 const H3_MAX_DURATION = 15;
 const H3_DEFAULT_DURATION = 5;
 const H3_MAX_FRAME_IMAGES = 2;
@@ -193,24 +230,50 @@ const H3_MAX_REFERENCE_VIDEOS = 3;
 const H3_MAX_REFERENCE_AUDIOS = 3;
 const H3_MAX_INPUT_VIDEO_SECONDS = 15;
 
-// MiniMax-H3 renders 4 to 15 seconds; the host protocols default to 5.
-function h3Duration(raw) {
+// The rules of the first listed model among the names, the channel's
+// upstream name first; a name the plugin does not list takes the family's.
+function videoProfile() {
+  for (let i = 0; i < arguments.length; i++) {
+    const name = trimmed(arguments[i]);
+    if (VIDEO_PROFILES[name]) return Object.assign({ name: name }, VIDEO_PROFILES[name]);
+  }
+  return Object.assign({ name: trimmed(arguments[0]) || H3_MODEL }, ANY_VIDEO_PROFILE);
+}
+
+// The H3 models render up to 15 seconds from 4 (H3-Max from 5); the host
+// protocols default to 5.
+function h3Duration(raw, profile) {
   if (raw === undefined || raw === null || raw === "") return H3_DEFAULT_DURATION;
   const seconds = Number(raw);
-  if (!Number.isInteger(seconds) || seconds < H3_MIN_DURATION || seconds > H3_MAX_DURATION) {
-    throw new Error(H3_MODEL + " duration must be an integer between " + H3_MIN_DURATION + " and " + H3_MAX_DURATION + " seconds");
+  if (!Number.isInteger(seconds) || seconds < profile.minDuration || seconds > H3_MAX_DURATION) {
+    throw new Error(profile.name + " duration must be an integer between " + profile.minDuration + " and " + H3_MAX_DURATION + " seconds");
   }
   return seconds;
 }
 
-function h3Resolution(req) {
+// Every H3 model renders 768P, the default.
+function h3Resolution(req, profile) {
   const metadata = req.metadata || {};
   const raw = trimmed(metadata.resolution) || trimmed(req.resolution) || trimmed(req.size);
   if (!raw) return "768P";
   const value = raw.toUpperCase();
-  if (value.includes("2K")) return "2K";
-  if (value.includes("768")) return "768P";
-  throw new Error(H3_MODEL + " resolution must be 768P or 2K");
+  const resolution = value.includes("2K") ? "2K" : value.includes("768") ? "768P" : value.includes("480") ? "480P" : "";
+  if (!profile.resolutions.includes(resolution)) throw new Error(profile.name + " resolution must be " + profile.resolutions.join(" or "));
+  return resolution;
+}
+
+// H3-Max's extra options; MiniMax rejects any other field in extra.
+function h3Extra(metadata, profile) {
+  if (!present(metadata.extra)) return undefined;
+  if (!profile.extra) throw new Error("extra is supported by MiniMax-H3-Max only");
+  const extra = plainObject(metadata.extra);
+  if (!extra) throw new Error("extra must be an object");
+  for (const key of Object.keys(extra)) {
+    if (key !== "prompt_expansion_mode") throw new Error("extra." + key + " is not supported");
+  }
+  if (present(extra.prompt_expansion_mode) && !["disabled", "balanced", "quality"].includes(extra.prompt_expansion_mode))
+    throw new Error("extra.prompt_expansion_mode must be disabled, balanced or quality");
+  return extra;
 }
 
 function h3MediaItem(type, url, role) {
@@ -339,26 +402,35 @@ function h3TextOnly(content) {
   });
 }
 
-// The host protocols default text-to-video to 16:9; MiniMax checks a ratio
-// from metadata.
-function h3Ratio(req, content) {
+function h3HasReference(content) {
+  return content.some(function (item) {
+    return item && /^reference_/.test(trimmed(item.role));
+  });
+}
+
+// The host protocols default text-to-video to 16:9, and reference media on
+// H3-Lite, which has no adaptive ratio for them; MiniMax checks a ratio from
+// metadata.
+function h3Ratio(req, content, profile) {
   const ratio = trimmed((req.metadata || {}).ratio);
-  if (!ratio) return h3TextOnly(content) ? "16:9" : "adaptive";
-  return ratio;
+  if (ratio) return ratio;
+  if (h3TextOnly(content) || (profile.fixedReferenceRatio && h3HasReference(content))) return "16:9";
+  return "adaptive";
 }
 
 // The content, duration and resolution MiniMax-H3 renders: those the host
 // protocols build from prompt, images, size and metadata, with defaults, or a
 // native body's own. MiniMax checks a native body; a duration or resolution
 // it leaves out or the plugin cannot read is reserved at the dearest.
-function h3Request(req) {
+function h3Request(req, profile) {
   const body = req.vendorBody;
-  if (!body) return { content: h3Content(req), duration: h3Duration(req.duration), resolution: h3Resolution(req) };
+  if (!body) return { content: h3Content(req), duration: h3Duration(req.duration, profile), resolution: h3Resolution(req, profile) };
   const missing = body.duration === undefined || body.duration === null || body.duration === "";
+  const resolution = trimmed(body.resolution).toUpperCase();
   return {
     content: validateH3Content(body.content),
-    duration: missing ? H3_MAX_DURATION : h3Duration(body.duration),
-    resolution: trimmed(body.resolution).toUpperCase() === "768P" ? "768P" : "2K",
+    duration: missing ? H3_MAX_DURATION : h3Duration(body.duration, profile),
+    resolution: profile.resolutions.includes(resolution) ? resolution : profile.resolutions[profile.resolutions.length - 1],
   };
 }
 
@@ -708,7 +780,7 @@ export const native = {
     refuseCallback(body);
     if (!Array.isArray(body.content)) throw new Error("content must be an array");
     const content = validateH3Content(body.content);
-    h3Duration(body.duration);
+    h3Duration(body.duration, videoProfile(body.model));
     return { kind: "submit", model: body.model, action: h3HasVisualContent(content) ? "image_to_video" : "text_to_video", requestBody: { model: body.model, vendorBody: body } };
   },
   // MiniMax's image bodies, sent as is; MiniMax checks the fields the gateway
@@ -764,14 +836,20 @@ export function buildSubmitRequest(ctx) {
       action: checked.action,
     };
   }
-  const h3 = h3Request(req);
+  const profile = videoProfile(model, ctx.model);
+  const h3 = h3Request(req, profile);
   const content = h3.content;
-  const body = req.vendorBody
-    ? Object.assign({}, req.vendorBody, { model: model })
-    : Object.assign(
-        { model: model, content: content, resolution: h3.resolution, duration: h3.duration, ratio: h3Ratio(req, content) },
-        definedFields(req.metadata || {}, H3_METADATA_FIELDS)
-      );
+  let body;
+  if (req.vendorBody) body = Object.assign({}, req.vendorBody, { model: model });
+  else {
+    const metadata = req.metadata || {};
+    body = Object.assign(
+      { model: model, content: content, resolution: h3.resolution, duration: h3.duration, ratio: h3Ratio(req, content, profile) },
+      definedFields(metadata, H3_METADATA_FIELDS)
+    );
+    const extra = h3Extra(metadata, profile);
+    if (extra) body.extra = extra;
+  }
   return {
     url: apiRoot(ctx) + "/v2/video_generation",
     method: "POST",
@@ -814,7 +892,7 @@ export function extractUsage(ctx) {
     return facts;
   }
   if (ctx.usagePurpose === "billing_ratios") return null;
-  const h3 = h3Request(req);
+  const h3 = h3Request(req, videoProfile(ctx.upstreamModel, ctx.model, req.model));
   const content = h3.content;
   return {
     seconds: h3.duration,
@@ -897,12 +975,13 @@ export function extractUsageOnComplete(task, taskResult, body) {
   if (imageTask(task)) return imageUsage(body);
   const h3Task = h3QueryTask(body);
   if (!h3Task) return null;
+  const profile = videoProfile(task.upstreamModel, task.model);
   const resolution = trimmed(h3Task.resolution).toUpperCase();
   const facts = {};
-  if (resolution === "2K" || resolution === "768P") facts.resolution = resolution;
+  if (profile.resolutions.includes(resolution)) facts.resolution = resolution;
   const usage = plainObject(h3Task.usage) || {};
   const fields = [
-    { key: "seconds", value: usage.output_seconds, minimum: H3_MIN_DURATION, maximum: H3_MAX_DURATION, integer: false },
+    { key: "seconds", value: usage.output_seconds, minimum: profile.minDuration, maximum: H3_MAX_DURATION, integer: false },
     { key: "input_images", value: usage.input_image_count, minimum: 0, maximum: H3_MAX_REFERENCE_IMAGES, integer: true },
     { key: "input_video_seconds", value: usage.input_seconds, minimum: 0, maximum: H3_MAX_INPUT_VIDEO_SECONDS, integer: false },
   ];
@@ -944,7 +1023,9 @@ export const protocols = {
       else if (Object.prototype.hasOwnProperty.call(req, "duration")) requestBody.duration = req.duration;
       if (Object.prototype.hasOwnProperty.call(req, "size")) requestBody.size = req.size;
       else if (Object.prototype.hasOwnProperty.call(req, "resolution")) requestBody.size = req.resolution;
-      const content = h3Request(requestBody).content;
+      const profile = videoProfile(ctx.upstreamModel, model);
+      const content = h3Request(requestBody, profile).content;
+      h3Extra(metadata, profile);
       return { kind: "submit", model: model, action: h3HasVisualContent(content) ? "image_to_video" : "text_to_video", requestBody: requestBody };
     },
     renderEvents: function (ctx, task, previousState) {
@@ -1051,7 +1132,9 @@ protocols.openai_video = {
     // vendorBody carries a native request's own body; clients of this protocol cannot set it.
     delete req.vendorBody;
     const requestBody = Object.assign({}, req, { model: ctx.model });
-    const content = h3Request(requestBody).content;
+    const profile = videoProfile(ctx.upstreamModel, ctx.model);
+    const content = h3Request(requestBody, profile).content;
+    h3Extra(requestBody.metadata || {}, profile);
     return { kind: "submit", model: ctx.model, action: h3HasVisualContent(content) ? "image_to_video" : "text_to_video", requestBody: requestBody };
   },
   render: function (ctx, task) {
