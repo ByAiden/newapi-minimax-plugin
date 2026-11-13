@@ -1,0 +1,299 @@
+{
+  "cases": [
+    {
+      "name": "video request sends the mapped model",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "prompt": "A fox in snow",
+            "seconds": 6,
+            "duration": 6,
+            "model": "MiniMax-H3"
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "text_to_video",
+          "model": "video",
+          "upstreamModel": "MiniMax-H3",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expected": {
+        "url": "https://api.minimaxi.com/v2/video_generation",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer test-key"
+        },
+        "body": {
+          "model": "MiniMax-H3",
+          "content": [
+            {
+              "type": "text",
+              "text": "A fox in snow"
+            }
+          ],
+          "resolution": "768P",
+          "duration": 6,
+          "ratio": "16:9"
+        },
+        "action": "text_to_video"
+      }
+    },
+    {
+      "name": "video reserves seconds and resolution",
+      "hook": "extractUsage",
+      "args": [
+        {
+          "requestBody": {
+            "prompt": "A fox in snow",
+            "seconds": 6,
+            "duration": 6,
+            "model": "MiniMax-H3"
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "text_to_video",
+          "model": "MiniMax-H3",
+          "upstreamModel": "MiniMax-H3",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expected": {
+        "seconds": 6,
+        "resolution": "768P",
+        "input_images": 0,
+        "input_video_seconds": 0
+      }
+    },
+    {
+      "name": "image request",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "model": "MiniMax-H3-Image",
+            "imageOperation": "generate",
+            "imageBody": {
+              "prompt": "A cat",
+              "n": 1
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "text_to_image",
+          "model": "MiniMax-H3-Image",
+          "upstreamModel": "MiniMax-H3-Image",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expected": {
+        "url": "https://api.minimaxi.com/v1/images/generations",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer test-key"
+        },
+        "body": {
+          "prompt": "A cat",
+          "n": 1,
+          "model": "MiniMax-H3-Image"
+        },
+        "action": "text_to_image"
+      }
+    },
+    {
+      "name": "video submit keeps the task id",
+      "hook": "parseSubmitResponse",
+      "args": [
+        {
+          "requestBody": {
+            "prompt": "A fox in snow",
+            "seconds": 6,
+            "duration": 6,
+            "model": "MiniMax-H3"
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "text_to_video",
+          "model": "MiniMax-H3",
+          "upstreamModel": "MiniMax-H3",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        },
+        {
+          "statusCode": 200,
+          "headers": {},
+          "body": {
+            "task_id": "mm1"
+          }
+        }
+      ],
+      "expected": {
+        "taskId": "mm1",
+        "taskData": {
+          "task_id": "mm1"
+        }
+      }
+    },
+    {
+      "name": "video running",
+      "hook": "parseTaskResult",
+      "args": [
+        {
+          "taskId": "mm1",
+          "model": "MiniMax-H3",
+          "upstreamModel": "MiniMax-H3",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          }
+        },
+        {
+          "task": {
+            "status": "running"
+          }
+        },
+        {
+          "status": 200,
+          "headers": {}
+        }
+      ],
+      "expected": {
+        "code": 0,
+        "status": "IN_PROGRESS",
+        "progress": "50%"
+      }
+    },
+    {
+      "name": "video failed",
+      "hook": "parseTaskResult",
+      "args": [
+        {
+          "taskId": "mm1",
+          "model": "MiniMax-H3",
+          "upstreamModel": "MiniMax-H3",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          }
+        },
+        {
+          "task": {
+            "status": "failed",
+            "error": {
+              "message": "bad"
+            }
+          }
+        },
+        {
+          "status": 200,
+          "headers": {}
+        }
+      ],
+      "expected": {
+        "code": 0,
+        "status": "FAILURE",
+        "progress": "100%",
+        "reason": "bad"
+      }
+    },
+    {
+      "name": "unknown state is UNKNOWN",
+      "hook": "parseTaskResult",
+      "args": [
+        {
+          "taskId": "mm1",
+          "model": "MiniMax-H3",
+          "upstreamModel": "MiniMax-H3",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          }
+        },
+        {
+          "task": {
+            "status": "teleporting"
+          }
+        },
+        {
+          "status": 200,
+          "headers": {}
+        }
+      ],
+      "expected": {
+        "status": "UNKNOWN",
+        "reason": "unrecognized status: teleporting"
+      }
+    },
+    {
+      "name": "query on the vendor path",
+      "hook": "buildQueryRequest",
+      "args": [
+        {
+          "taskId": "mm1",
+          "model": "MiniMax-H3",
+          "upstreamModel": "MiniMax-H3",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          }
+        }
+      ],
+      "expected": {
+        "url": "https://api.minimaxi.com/v2/query/video_generation/mm1",
+        "method": "GET",
+        "headers": {
+          "Accept": "application/json",
+          "Authorization": "Bearer test-key"
+        }
+      }
+    }
+  ]
+}

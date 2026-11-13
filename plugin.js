@@ -133,14 +133,14 @@ const IMAGE_EXAMPLES = [
 // gateway calls. The image API answers synchronously and has no task to re-query.
 export const meta = {
   "apiVersion": 1,
-  "key": "byaiden_minimax",
+  "key": "minimax-h3",
   "name": "MiniMax H3",
   "icon": "Minimax.Color",
   "description": {
     "en": "MiniMax-H3, H3-Highspeed, H3-Lite and H3-Max video generation (text, frames, and multimodal reference) and MiniMax-H3-Image generation and editing",
     "zh": "MiniMax-H3、H3-Highspeed、H3-Lite、H3-Max 视频生成（文生视频、首尾帧、多模态参考）与 MiniMax-H3-Image 图片生成和编辑"
   },
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": {
     "name": "ByAiden",
     "url": "https://github.com/ByAiden"

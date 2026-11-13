@@ -12,7 +12,7 @@ It covers the H3 family only. The older Hailuo 2.3, 02 and 01 series models stay
 
 ## Channel setup
 
-- Install the plugin, then add a channel of the Task Plugin type and bind it to `byaiden_minimax`.
+- Install the plugin, then add a channel of the Task Plugin type and bind it to `minimax-h3`.
 - The key is an API key from the MiniMax open platform. MiniMax bills the H3 video and image models pay-as-you-go; a Token Plan subscription key is refused for H3 video with error 2068.
 - Leave the API address empty to use `https://api.minimaxi.com`, the China platform. For a global platform key, enter `https://api.minimax.io`. `https://api.minimax.cn` also reaches the China platform but connects less reliably from gateways outside mainland China. Leave `/v1` off the end.
 - Add the models you offer to the channel. A channel can also offer them under other names through model mapping.
@@ -31,9 +31,9 @@ It covers the H3 family only. The older Hailuo 2.3, 02 and 01 series models stay
 
 The H3 video models are `MiniMax-H3`, `MiniMax-H3-Highspeed`, `MiniMax-H3-Lite` and `MiniMax-H3-Max`. On `MiniMax-H3-Max`, `metadata.extra.prompt_expansion_mode` (`disabled`, `balanced` or `quality`) sets prompt expansion.
 
-The image endpoints wait for every image and answer with URLs, or with base64 data when the request sets `response_format: "b64_json"`. An image that fails or is withheld by MiniMax's content check is left out of the reply; the request fails only when no image is made. MiniMax's own image bodies and replies, failed images included, are served at `/byaiden_minimax/v1/images/generations` and `/byaiden_minimax/v1/images/edits`.
+The image endpoints wait for every image and answer with URLs, or with base64 data when the request sets `response_format: "b64_json"`. An image that fails or is withheld by MiniMax's content check is left out of the reply; the request fails only when no image is made. MiniMax's own image bodies and replies, failed images included, are served at `/minimax-h3/v1/images/generations` and `/minimax-h3/v1/images/edits`.
 
-For videos, clients poll `GET /v1/videos/{task_id}` and download the file from `GET /v1/videos/{task_id}/content`. MiniMax's own video paths also work under `/byaiden_minimax`.
+For videos, clients poll `GET /v1/videos/{task_id}` and download the file from `GET /v1/videos/{task_id}/content`. MiniMax's own video paths also work under `/minimax-h3`.
 
 ## Billing
 
