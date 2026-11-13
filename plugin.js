@@ -140,7 +140,7 @@ export const meta = {
     "en": "MiniMax-H3, H3-Highspeed, H3-Lite and H3-Max video generation (text, frames, and multimodal reference) and MiniMax-H3-Image generation and editing",
     "zh": "MiniMax-H3、H3-Highspeed、H3-Lite、H3-Max 视频生成（文生视频、首尾帧、多模态参考）与 MiniMax-H3-Image 图片生成和编辑"
   },
-  "version": "1.2.0",
+  "version": "1.2.1",
   "author": {
     "name": "ByAiden",
     "url": "https://github.com/ByAiden"
@@ -567,6 +567,9 @@ export const meta = {
   ]
 };
 
+// The gateway reads the manifest statically, so the code below uses these copies of its values.
+const PLUGIN_KEY = "byaiden_minimax";
+
 function trimmed(value) {
   return String(value === undefined || value === null ? "" : value).trim();
 }
@@ -595,7 +598,7 @@ function viaGateway(ctx) {
 }
 
 function apiRoot(ctx) {
-  return ctx.baseUrl + (viaGateway(ctx) ? "/" + meta.key : "");
+  return ctx.baseUrl + (viaGateway(ctx) ? "/" + PLUGIN_KEY : "");
 }
 
 function authHeaders(ctx) {

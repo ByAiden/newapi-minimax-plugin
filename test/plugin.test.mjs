@@ -50,7 +50,7 @@ const SUCCESS_BODY = {
 test("manifest declares the H3 video family and H3 image models only", () => {
   assert.equal(meta.apiVersion, 1);
   assert.ok(meta.key.length <= 30);
-  assert.equal(meta.version, "1.2.0");
+  assert.equal(meta.version, "1.2.1");
   assert.equal(meta.baseUrl, "https://api.minimaxi.com");
   assert.equal(meta.channelTypes, undefined);
   assert.match(meta.version, /^\d+\.\d+\.\d+$/);
@@ -347,4 +347,12 @@ test("meta is a JSON object literal the marketplace can read without running the
   const start = source.indexOf("export const meta = ") + "export const meta = ".length;
   const literal = source.slice(start, source.indexOf(";\n", start));
   assert.deepEqual(JSON.parse(literal), JSON.parse(JSON.stringify(meta)));
+});
+
+test("code never references meta, so the gateway can read it statically", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../plugin.js", import.meta.url), "utf8");
+  const rest = src.slice(src.indexOf("\n};\n", src.indexOf("export const meta = {")));
+  assert.doesNotMatch(rest, /(^|[^A-Za-z0-9_$.])meta([^A-Za-z0-9_$]|$)/m);
+  assert.ok(rest.includes(JSON.stringify(meta.key)));
 });
