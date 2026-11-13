@@ -11,7 +11,7 @@ locale: zh-CN
 
 ## 渠道设置
 
-- 安装插件后，新建一个「任务插件」类型的渠道，绑定 `minimax-h3`。
+- 安装插件后，新建一个「任务插件」类型的渠道，绑定 `byaiden_minimax`。
 - 密钥填 MiniMax 开放平台创建的 API Key。H3 视频和图片模型由 MiniMax 按量计费；Token Plan 套餐的 Key 调用 H3 视频会被拒绝（错误码 2068）。
 - API 地址留空时使用国内站 `https://api.minimaxi.com`。国际站的 Key 请填 `https://api.minimax.io`。`https://api.minimax.cn` 也指向国内站，但网关在海外时连接不太稳定。末尾不要加 `/v1`。
 - 把要提供的模型加到渠道里；也可以通过模型映射用别的名字提供。
@@ -30,9 +30,9 @@ locale: zh-CN
 
 H3 视频模型包括 `MiniMax-H3`、`MiniMax-H3-Highspeed`、`MiniMax-H3-Lite` 和 `MiniMax-H3-Max`。`MiniMax-H3-Max` 可以用 `metadata.extra.prompt_expansion_mode`（`disabled`、`balanced` 或 `quality`）设置提示词扩写。
 
-图片接口等全部图片生成完才返回，默认返回 URL；请求里设 `response_format: "b64_json"` 时返回 base64。单张图片生成失败或被 MiniMax 内容审核拦下时，不放进返回结果；只有一张都没生成出来，整个请求才算失败。MiniMax 原生的图片请求体和返回（包括失败的图片）走 `/minimax-h3/v1/images/generations` 和 `/minimax-h3/v1/images/edits`。
+图片接口等全部图片生成完才返回，默认返回 URL；请求里设 `response_format: "b64_json"` 时返回 base64。单张图片生成失败或被 MiniMax 内容审核拦下时，不放进返回结果；只有一张都没生成出来，整个请求才算失败。MiniMax 原生的图片请求体和返回（包括失败的图片）走 `/byaiden_minimax/v1/images/generations` 和 `/byaiden_minimax/v1/images/edits`。
 
-视频由客户端轮询 `GET /v1/videos/{task_id}`，完成后从 `GET /v1/videos/{task_id}/content` 下载。MiniMax 原生的视频路径也可以加 `/minimax-h3` 前缀调用。
+视频由客户端轮询 `GET /v1/videos/{task_id}`，完成后从 `GET /v1/videos/{task_id}/content` 下载。MiniMax 原生的视频路径也可以加 `/byaiden_minimax` 前缀调用。
 
 ## 计费
 

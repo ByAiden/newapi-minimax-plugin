@@ -1,7 +1,7 @@
 ---
 changelogVersion: 1
-plugin: minimax-h3
-version: 1.1.0
+plugin: byaiden_minimax
+version: 1.2.0
 locale: "en"
 translations:
   zh-CN: CHANGELOG.zh-CN.md
@@ -9,7 +9,7 @@ translations:
 
 # Changelog
 
-## [1.1.0]
+## [1.2.0]
 
 ### Added
 

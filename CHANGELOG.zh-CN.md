@@ -1,13 +1,13 @@
 ---
 changelogVersion: 1
-plugin: minimax-h3
-version: 1.1.0
+plugin: byaiden_minimax
+version: 1.2.0
 locale: "zh-CN"
 ---
 
 # Changelog
 
-## [1.1.0]
+## [1.2.0]
 
 ### Added
 

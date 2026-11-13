@@ -50,7 +50,7 @@ const SUCCESS_BODY = {
 test("manifest declares the H3 video family and H3 image models only", () => {
   assert.equal(meta.apiVersion, 1);
   assert.ok(meta.key.length <= 30);
-  assert.equal(meta.version, "1.1.0");
+  assert.equal(meta.version, "1.2.0");
   assert.equal(meta.baseUrl, "https://api.minimaxi.com");
   assert.equal(meta.channelTypes, undefined);
   assert.match(meta.version, /^\d+\.\d+\.\d+$/);
