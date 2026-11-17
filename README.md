@@ -13,7 +13,7 @@ It covers the H3 family only. The older Hailuo 2.3, 02 and 01 series models stay
 ## Channel setup
 
 - Install the plugin, then add a channel of the Task Plugin type and bind it to `byaiden_minimax`.
-- The key is an API key from the MiniMax open platform. MiniMax bills the H3 video and image models pay-as-you-go; a Token Plan subscription key is refused for H3 video with error 2068.
+- The key is an API key from the MiniMax open platform. A pay-as-you-go key reaches every model. With an M Plan subscription key, the Explore and Build tiers reach `MiniMax-H3` video (MiniMax does not list Highspeed, Lite or Max) plus `MiniMax-H3-Image` and `MiniMax-H3-Image-Highspeed`; the Go tier has `MiniMax-H3-Image` only and no video. A legacy Token Plan key is refused for H3 video with error 2068.
 - Leave the API address empty to use `https://api.minimaxi.com`, the China platform. For a global platform key, enter `https://api.minimax.io`. `https://api.minimax.cn` also reaches the China platform but connects less reliably from gateways outside mainland China. Leave `/v1` off the end.
 - Add the models you offer to the channel. A channel can also offer them under other names through model mapping.
 - To use another New API gateway as the upstream, choose New API (60), enter that gateway's address and one of its tokens, and bind this plugin to the channel. That gateway needs this plugin too.
@@ -45,8 +45,10 @@ H3 video models, each with its own price:
 - "Output video resolution" gives each resolution its own price: `768P` and `2K` on `MiniMax-H3`, `480P` and `768P` on the other three. A request without a resolution counts `768P`, or the model's dearest on MiniMax's own path, and settles on the resolution of the finished video.
 - "Input image unit price" counts every input image; MiniMax charges only the images beyond the first 5 (beyond the first 2 on `MiniMax-H3-Max`), so subtract them in the expression with `max(u("input_images") - 5, 0)`. "Input video unit price" is charged per second of input video, held at 15 seconds until MiniMax reports the actual length.
 
-For example, `MiniMax-H3-Highspeed` at MiniMax's list price times a margin `M`:
-`u("resolution") == "768P" ? tier("768P", (u("seconds") * 0.06 + u("input_video_seconds") * 0.06 + max(u("input_images") - 5, 0) * 0.03) * M) : tier("480P", (u("seconds") * 0.04 + u("input_video_seconds") * 0.04 + max(u("input_images") - 5, 0) * 0.03) * M)`
+For example, `MiniMax-H3-Highspeed` at the China platform's CNY list price times a margin `M`, written as plain CNY numbers for sites that sell 1 USD of quota for 1 CNY:
+`u("resolution") == "768P" ? tier("768P", (u("seconds") * 0.4 + u("input_video_seconds") * 0.4 + max(u("input_images") - 5, 0) * 0.2) * M) : tier("480P", (u("seconds") * 0.26 + u("input_video_seconds") * 0.26 + max(u("input_images") - 5, 0) * 0.2) * M)`
+
+The global platform lists the same model in USD: $0.06 per second at 768P, $0.04 at 480P and $0.03 per extra input image. Sites billing in real USD use the global USD prices or divide the CNY prices by their rate.
 
 `MiniMax-H3-Image` and `MiniMax-H3-Image-Highspeed`, which MiniMax bills by tokens:
 
@@ -54,7 +56,7 @@ For example, `MiniMax-H3-Highspeed` at MiniMax's list price times a margin `M`:
 - "Image generation unit price" is charged per delivered image, for a per-image price instead of token prices.
 - The request holds an estimate: the output tokens of the requested size (one token per 1024 pixels and at least 4096 an image; `auto` sizes count their `area`, 4K by default), and generous input estimates. It then settles on the usage MiniMax reports, so only delivered images are charged.
 
-For example, to charge MiniMax's list price for `MiniMax-H3-Image` with a margin `M`, save a task expression such as `tier("base", (u("image_input_text_tokens") * 2.3 + u("image_input_image_tokens") * 1.5 + u("image_output_tokens") * 3.8) / 1000000 * M)`. Check MiniMax's current prices first; `MiniMax-H3-Image-Highspeed` costs more per image token.
+For example, to charge the China platform's CNY list price for `MiniMax-H3-Image` with a margin `M`, save a task expression such as `tier("base", (u("image_input_text_tokens") * 15 + u("image_input_image_tokens") * 10 + u("image_output_tokens") * 25) / 1000000 * M)` (the global platform's USD prices are 2.3, 1.5 and 3.8). Check MiniMax's current prices first; `MiniMax-H3-Image-Highspeed` costs more per image token.
 
 ## Example
 

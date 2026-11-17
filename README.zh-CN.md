@@ -12,7 +12,7 @@ locale: zh-CN
 ## 渠道设置
 
 - 安装插件后，新建一个「任务插件」类型的渠道，绑定 `byaiden_minimax`。
-- 密钥填 MiniMax 开放平台创建的 API Key。H3 视频和图片模型由 MiniMax 按量计费；Token Plan 套餐的 Key 调用 H3 视频会被拒绝（错误码 2068）。
+- 密钥填 MiniMax 开放平台创建的 API Key。按量付费 Key 可用全部模型。M Plan 订阅 Key：Explore、Build 档可用 `MiniMax-H3` 视频（官方文档未列出 Highspeed、Lite、Max），以及 `MiniMax-H3-Image` 和 `MiniMax-H3-Image-Highspeed`；Go 档只有 `MiniMax-H3-Image`，没有视频。旧 Token Plan 的 Key 调用 H3 视频会被拒绝（错误码 2068）。
 - API 地址留空时使用国内站 `https://api.minimaxi.com`。国际站的 Key 请填 `https://api.minimax.io`。`https://api.minimax.cn` 也指向国内站，但网关在海外时连接不太稳定。末尾不要加 `/v1`。
 - 把要提供的模型加到渠道里；也可以通过模型映射用别的名字提供。
 - 如果上游是另一台 New API 网关，渠道类型选 New API (60)，填写该网关的地址和它的令牌，并把本插件绑定到该渠道。上游网关也需要安装本插件。
@@ -44,8 +44,10 @@ H3 视频模型（每个模型单独定价）：
 - “输出视频分辨率”可以给每档分辨率分别定价：`MiniMax-H3` 是 `768P` 和 `2K`，另外三个是 `480P` 和 `768P`。请求没写分辨率时按 `768P` 计算（MiniMax 原生路径按该模型最贵的一档），最后按成片的分辨率结算。
 - “输入图片单价”统计全部输入图片；MiniMax 只对前 5 张之外的图片收费（`MiniMax-H3-Max` 是前 2 张之外），所以表达式里用 `max(u("input_images") - 5, 0)` 扣掉免费张数。“输入视频单价”按输入视频秒数计费，先按 15 秒预扣，MiniMax 报告实际时长后再结算。
 
-例如按 MiniMax 官方价加价 `M` 倍给 `MiniMax-H3-Highspeed` 定价：
-`u("resolution") == "768P" ? tier("768P", (u("seconds") * 0.06 + u("input_video_seconds") * 0.06 + max(u("input_images") - 5, 0) * 0.03) * M) : tier("480P", (u("seconds") * 0.04 + u("input_video_seconds") * 0.04 + max(u("input_images") - 5, 0) * 0.03) * M)`
+例如按国内站人民币标价加价 `M` 倍给 `MiniMax-H3-Highspeed` 定价（直接用人民币数字，适用于「1 元 = 1 美元额度」的站点）：
+`u("resolution") == "768P" ? tier("768P", (u("seconds") * 0.4 + u("input_video_seconds") * 0.4 + max(u("input_images") - 5, 0) * 0.2) * M) : tier("480P", (u("seconds") * 0.26 + u("input_video_seconds") * 0.26 + max(u("input_images") - 5, 0) * 0.2) * M)`
+
+国际站按美元标价，同一模型为 768P $0.06/秒、480P $0.04/秒、超出部分的输入图片 $0.03/张。按美元结算的站点用国际站美元价，或把人民币价再除以汇率。
 
 `MiniMax-H3-Image` 和 `MiniMax-H3-Image-Highspeed`（MiniMax 按 token 计费）：
 
@@ -53,7 +55,7 @@ H3 视频模型（每个模型单独定价）：
 - “图片生成单价”按成功生成的张数计费，适合不想按 token、只想按张定价的情况。
 - 提交时先预扣一个估算值：输出 token 按请求的尺寸算（每 1024 像素 1 个 token，每张至少 4096 个；`auto` 尺寸按 `area` 算，默认 4K），输入 token 按偏高的估算值算。最后按 MiniMax 报告的实际用量结算，只收成功生成的图片。
 
-例如想按 `MiniMax-H3-Image` 的官方价格加价 `M` 倍，可以保存这样的任务表达式：`tier("base", (u("image_input_text_tokens") * 2.3 + u("image_input_image_tokens") * 1.5 + u("image_output_tokens") * 3.8) / 1000000 * M)`。保存前请先核对 MiniMax 当前价格；`MiniMax-H3-Image-Highspeed` 的图片 token 单价更高。
+例如想按 `MiniMax-H3-Image` 的国内站人民币标价加价 `M` 倍，可以保存这样的任务表达式：`tier("base", (u("image_input_text_tokens") * 15 + u("image_input_image_tokens") * 10 + u("image_output_tokens") * 25) / 1000000 * M)`（国际站美元价为 2.3、1.5、3.8）。保存前请先核对 MiniMax 当前价格；`MiniMax-H3-Image-Highspeed` 的图片 token 单价更高。
 
 ## 示例
 

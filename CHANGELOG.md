@@ -1,7 +1,7 @@
 ---
 changelogVersion: 1
 plugin: byaiden_minimax
-version: 1.2.1
+version: 1.2.2
 locale: "en"
 translations:
   zh-CN: CHANGELOG.zh-CN.md
@@ -9,8 +9,8 @@ translations:
 
 # Changelog
 
-## [1.2.1]
+## [1.2.2]
 
-### Fixed
+### Changed
 
-- The gateway's install page now reads the plugin's details from the code, so it lists the addresses the plugin contacts instead of saying they could not be read. Requests, models and billing are unchanged.
+- The README lists which M Plan tiers reach H3 video and images (Explore and Build: H3 video; Go: images only; legacy Token Plan keys get error 2068) and gives price expressions in the China platform's CNY list prices, with the global USD prices beside them. Code is unchanged.

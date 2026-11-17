@@ -1,14 +1,14 @@
 ---
 changelogVersion: 1
 plugin: byaiden_minimax
-version: 1.2.1
+version: 1.2.2
 locale: "zh-CN"
 ---
 
 # Changelog
 
-## [1.2.1]
+## [1.2.2]
 
-### Fixed
+### Changed
 
-- 网关的安装页现在能从代码中读出插件信息，会列出插件访问的地址，不再显示「无法从代码中读出」。请求、模型和计费均无变化。
+- README 写明 M Plan 各档可用的模型（Explore、Build 可用 H3 视频；Go 只有图片；旧 Token Plan Key 报错 2068），计费示例改用国内站人民币标价，并附国际站美元价。代码无变化。
