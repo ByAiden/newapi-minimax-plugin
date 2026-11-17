@@ -76,7 +76,7 @@ curl https://your-gateway.example.com/v1/videos \
 ## 限制
 
 - `MiniMax-H3` 生成 4 到 15 秒的视频，分辨率 `768P` 或 `2K`。`MiniMax-H3-Highspeed` 和 `MiniMax-H3-Lite` 生成 4 到 15 秒、`MiniMax-H3-Max` 生成 5 到 15 秒，分辨率 `480P` 或 `768P`。
-- `MiniMax-H3-Lite` 用参考素材时不支持自适应比例，默认按 `16:9`，要别的比例请设 `metadata.ratio`。所有 H3 视频模型最多 9 张图片、3 段参考视频、3 段参考音频。一个请求只能用首尾帧，或者只能用参考素材，不能混用。
+- `MiniMax-H3-Lite` 用参考素材时不支持自适应比例，默认按 `16:9`，要别的比例请设 `ratio` 或 `metadata.ratio`。纯文字请求也默认 `16:9`。`prompt` 和 `ratio` 必须是字符串。所有 H3 视频模型最多 9 张图片、3 段参考视频、3 段参考音频。一个请求只能用首尾帧，或者只能用参考素材，不能混用。
 - 图片请求每次生成 1 到 10 张。`WIDTHxHEIGHT` 形式的尺寸要在 655,360 到 20,000,000 像素之间，宽高比在 1:3 到 3:1 之间，而且不能和 `aspect_ratio`、`area` 同时使用。
 - 图片编辑总会做提示词扩写，所以 `disable_prompt_enhanced` 只能用在文生图上，而且要同时指定固定尺寸或 `aspect_ratio`。
 - 不支持蒙版、透明背景、随机种子和流式返回图片。

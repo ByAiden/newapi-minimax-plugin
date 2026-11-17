@@ -1,7 +1,7 @@
 ---
 changelogVersion: 1
 plugin: byaiden_minimax
-version: 1.2.2
+version: 1.2.3
 locale: "en"
 translations:
   zh-CN: CHANGELOG.zh-CN.md
@@ -9,8 +9,12 @@ translations:
 
 # Changelog
 
-## [1.2.2]
+## [1.2.3]
 
 ### Changed
 
-- The README lists which M Plan tiers reach H3 video and images (Explore and Build: H3 video; Go: images only; legacy Token Plan keys get error 2068) and gives price expressions in the China platform's CNY list prices, with the global USD prices beside them. Code is unchanged.
+- Video requests accept a top-level `ratio` as well as `metadata.ratio` (which wins when both are set). Before, a top-level `ratio` was ignored.
+
+### Fixed
+
+- A video `prompt` or `ratio` that is not a string (for example an array) is refused before the request is sent. Before, the prompt was sent to MiniMax as the text `[object Object]` and the video was billed.

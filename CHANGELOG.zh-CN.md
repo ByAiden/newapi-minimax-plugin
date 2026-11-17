@@ -1,14 +1,18 @@
 ---
 changelogVersion: 1
 plugin: byaiden_minimax
-version: 1.2.2
+version: 1.2.3
 locale: "zh-CN"
 ---
 
 # Changelog
 
-## [1.2.2]
+## [1.2.3]
 
 ### Changed
 
-- README 写明 M Plan 各档可用的模型（Explore、Build 可用 H3 视频；Go 只有图片；旧 Token Plan Key 报错 2068），计费示例改用国内站人民币标价，并附国际站美元价。代码无变化。
+- 视频请求支持顶层 `ratio`，同时设了 `metadata.ratio` 时以后者为准。此前顶层 `ratio` 会被忽略。
+
+### Fixed
+
+- 视频请求的 `prompt` 或 `ratio` 不是字符串（例如写成数组）时直接报错，不再提交。此前会把 `[object Object]` 当作提示词发给 MiniMax，照常生成并扣费。

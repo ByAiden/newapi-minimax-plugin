@@ -77,7 +77,7 @@ curl https://your-gateway.example.com/v1/videos \
 ## Limits
 
 - `MiniMax-H3` makes 4 to 15 seconds at `768P` or `2K`. `MiniMax-H3-Highspeed` and `MiniMax-H3-Lite` make 4 to 15 seconds and `MiniMax-H3-Max` 5 to 15 seconds, at `480P` or `768P`.
-- `MiniMax-H3-Lite` has no adaptive ratio with reference media, so such requests default to `16:9`; set `metadata.ratio` for another. Every H3 video model takes up to 9 images, 3 reference videos and 3 reference audio clips. A request uses either frame images or reference media.
+- `MiniMax-H3-Lite` has no adaptive ratio with reference media, so such requests default to `16:9`; set `ratio` or `metadata.ratio` for another. A text-only request defaults to `16:9` as well. `prompt` and `ratio` must be strings. Every H3 video model takes up to 9 images, 3 reference videos and 3 reference audio clips. A request uses either frame images or reference media.
 - An image request makes 1 to 10 images. A `WIDTHxHEIGHT` size covers 655,360 to 20,000,000 pixels with a ratio from 1:3 to 3:1, and cannot be combined with `aspect_ratio` or `area`.
 - Image edits always use prompt enhancement, so `disable_prompt_enhanced` works on text to image only, and there with a fixed size or `aspect_ratio`.
 - Masks, transparent backgrounds, seeds and streamed image replies are not supported.

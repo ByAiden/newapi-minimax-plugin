@@ -140,7 +140,7 @@ export const meta = {
     "en": "MiniMax-H3, H3-Highspeed, H3-Lite and H3-Max video generation (text, frames, and multimodal reference) and MiniMax-H3-Image generation and editing",
     "zh": "MiniMax-H3、H3-Highspeed、H3-Lite、H3-Max 视频生成（文生视频、首尾帧、多模态参考）与 MiniMax-H3-Image 图片生成和编辑"
   },
-  "version": "1.2.2",
+  "version": "1.2.3",
   "author": {
     "name": "ByAiden",
     "url": "https://github.com/ByAiden"
@@ -807,9 +807,9 @@ function h3HasReference(content) {
 
 // The host protocols default text-to-video to 16:9, and reference media on
 // H3-Lite, which has no adaptive ratio for them; MiniMax checks a ratio from
-// metadata.
+// metadata or, failing that, the top-level ratio.
 function h3Ratio(req, content, profile) {
-  const ratio = trimmed((req.metadata || {}).ratio);
+  const ratio = trimmed((req.metadata || {}).ratio) || trimmed(req.ratio);
   if (ratio) return ratio;
   if (h3TextOnly(content) || (profile.fixedReferenceRatio && h3HasReference(content))) return "16:9";
   return "adaptive";
@@ -1406,6 +1406,8 @@ export const protocols = {
       if (req.input !== undefined && typeof req.input !== "string" && !Array.isArray(req.input)) throw new Error("input must be a string or array");
       if (req.images !== undefined && !Array.isArray(req.images)) throw new Error("images must be an array");
       if (req.metadata !== undefined && !plainObject(req.metadata)) throw new Error("metadata must be an object");
+      if (present(req.prompt) && typeof req.prompt !== "string") throw new Error("prompt must be a string");
+      if (present(req.ratio) && typeof req.ratio !== "string") throw new Error("ratio must be a string");
       const input = responsesInput(req);
       const prompt = input.prompt || trimmed(req.prompt);
       const images = [];
@@ -1418,6 +1420,7 @@ export const protocols = {
       if (images.length > 1 && !metadata.last_frame_image) metadata.last_frame_image = images[1];
       const requestBody = { model: model, prompt: prompt, metadata: metadata };
       if (images.length) requestBody.images = images;
+      if (present(req.ratio)) requestBody.ratio = req.ratio;
       if (Object.prototype.hasOwnProperty.call(req, "seconds")) requestBody.duration = req.seconds;
       else if (Object.prototype.hasOwnProperty.call(req, "duration")) requestBody.duration = req.duration;
       if (Object.prototype.hasOwnProperty.call(req, "size")) requestBody.size = req.size;
@@ -1515,6 +1518,10 @@ protocols.openai_video = {
         req.metadata = parsed;
       }
     }
+    // String() would turn an array or object prompt into "[object Object]"
+    // and MiniMax would bill a video of that text.
+    if (present(req.prompt) && typeof req.prompt !== "string") throw new Error("prompt must be a string");
+    if (present(req.ratio) && typeof req.ratio !== "string") throw new Error("ratio must be a string");
     const seconds = req.seconds === undefined ? req.duration : req.seconds;
     if (seconds !== undefined) req.duration = Number(seconds);
     if (hasInputReferenceFile) {

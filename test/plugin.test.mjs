@@ -50,7 +50,7 @@ const SUCCESS_BODY = {
 test("manifest declares the H3 video family and H3 image models only", () => {
   assert.equal(meta.apiVersion, 1);
   assert.ok(meta.key.length <= 30);
-  assert.equal(meta.version, "1.2.2");
+  assert.equal(meta.version, "1.2.3");
   assert.equal(meta.baseUrl, "https://api.minimaxi.com");
   assert.equal(meta.channelTypes, undefined);
   assert.match(meta.version, /^\d+\.\d+\.\d+$/);
@@ -232,6 +232,23 @@ test("H3 text to video builds the /v2 body and reserves the request", () => {
   assert.equal(plugin.extractUsage(Object.assign(driver(intent), { usagePurpose: "billing_ratios" })), null);
   assert.throws(() => protocols.openai_video.decodeRequest(jsonCtx({ prompt: "x", seconds: 20 }, { model: "MiniMax-H3" })), /between 4 and 15/);
   assert.throws(() => protocols.openai_video.decodeRequest(jsonCtx({ prompt: "x", size: "1080P" }, { model: "MiniMax-H3" })), /768P or 2K/);
+});
+
+test("a prompt that is not a string is refused, not sent as [object Object]", () => {
+  for (const prompt of [[{ prompt: "x" }], { text: "x" }, 5]) {
+    assert.throws(() => protocols.openai_video.decodeRequest(jsonCtx({ prompt: prompt }, { model: "MiniMax-H3" })), /prompt must be a string/);
+    assert.throws(() => protocols.openai_responses.decodeRequest(jsonCtx({ model: "MiniMax-H3", prompt: prompt })), /prompt must be a string/);
+  }
+});
+
+test("a top-level ratio sets the video ratio; metadata.ratio wins", () => {
+  const ratio = (value) => plugin.buildSubmitRequest(driver(protocols.openai_video.decodeRequest(jsonCtx(value, { model: "MiniMax-H3" })))).body.ratio;
+  assert.equal(ratio({ prompt: "x", ratio: "9:16" }), "9:16");
+  assert.equal(ratio({ prompt: "x", ratio: "9:16", metadata: { ratio: "1:1" } }), "1:1");
+  const responses = protocols.openai_responses.decodeRequest(jsonCtx({ model: "MiniMax-H3", input: "x", ratio: "9:16" }));
+  assert.equal(plugin.buildSubmitRequest(driver(responses)).body.ratio, "9:16");
+  assert.throws(() => protocols.openai_video.decodeRequest(jsonCtx({ prompt: "x", ratio: 1.5 }, { model: "MiniMax-H3" })), /ratio must be a string/);
+  assert.throws(() => protocols.openai_responses.decodeRequest(jsonCtx({ model: "MiniMax-H3", input: "x", ratio: 1.5 })), /ratio must be a string/);
 });
 
 test("H3 image to video uses an uploaded input_reference as the first frame", () => {
