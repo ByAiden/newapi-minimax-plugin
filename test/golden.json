@@ -342,6 +342,73 @@
       ]
     },
     {
+      "name": "video artifact from another gateway's reply without a link",
+      "hook": "listArtifacts",
+      "args": [
+        {
+          "status": "SUCCESS",
+          "data": {
+            "task": {
+              "id": "task_mid",
+              "status": "succeeded",
+              "modality": "video",
+              "task_type": "generation",
+              "resolution": "768P"
+            }
+          }
+        }
+      ],
+      "expected": [
+        {
+          "key": "video",
+          "type": "video",
+          "mimeType": "video/mp4"
+        }
+      ]
+    },
+    {
+      "name": "another gateway's reply settles on its usage",
+      "hook": "extractUsageOnComplete",
+      "args": [
+        {
+          "taskId": "mm1",
+          "publicTaskId": "task_public",
+          "action": "text_to_video",
+          "model": "MiniMax-H3",
+          "upstreamModel": "MiniMax-H3",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "new_api"
+          },
+          "config": {}
+        },
+        {
+          "status": "SUCCESS"
+        },
+        {
+          "task": {
+            "id": "task_mid",
+            "status": "succeeded",
+            "resolution": "768P",
+            "modality": "video",
+            "usage": {
+              "output_seconds": 6,
+              "input_image_count": 0,
+              "input_seconds": 0
+            }
+          }
+        }
+      ],
+      "expected": {
+        "resolution": "768P",
+        "seconds": 6,
+        "input_images": 0,
+        "input_video_seconds": 0
+      }
+    },
+    {
       "name": "download falls back to the stored link",
       "hook": "buildContentRequest",
       "args": [

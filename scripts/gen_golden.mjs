@@ -61,6 +61,8 @@ add("unknown state is UNKNOWN", "parseTaskResult", [qctx(), { task: { status: "t
 const videoDone = { task: { id: "mm1", status: "succeeded", resolution: "768P", task_type: "generation", content: { url: "https://cdn.example/v.mp4" }, usage: { output_seconds: 6, input_image_count: 0, input_seconds: 0 } } };
 add("video settles on MiniMax's usage", "extractUsageOnComplete", [qctx(), { status: "SUCCESS" }, videoDone]);
 add("video artifact", "listArtifacts", [{ status: "SUCCESS", data: videoDone }]);
+add("video artifact from another gateway's reply without a link", "listArtifacts", [{ status: "SUCCESS", data: { task: { id: "task_mid", status: "succeeded", modality: "video", task_type: "generation", resolution: "768P" } } }]);
+add("another gateway's reply settles on its usage", "extractUsageOnComplete", [qctx({ upstream: { kind: "new_api" } }), { status: "SUCCESS" }, { task: { id: "task_mid", status: "succeeded", resolution: "768P", modality: "video", usage: { output_seconds: 6, input_image_count: 0, input_seconds: 0 } } }]);
 add("download falls back to the stored link", "buildContentRequest", [{ artifactKey: "video", baseUrl: BASE, apiKey: "test-key", upstream: { kind: "vendor" }, data: videoDone, clientRequest: { method: "GET" } }]);
 add("download through another gateway", "buildContentRequest", [{ artifactKey: "video", baseUrl: "https://mid.example", apiKey: "sk-mid", authHeader: "Bearer sk-mid", upstreamTaskId: "task_mid", upstream: { kind: "new_api" }, data: {}, clientRequest: { method: "GET" } }]);
 

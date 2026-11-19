@@ -85,17 +85,17 @@ H3-Context-IR（`POST /v2/h3_context_ir`）：MiniMax 原生请求体（`content
 
 取消或删除（`DELETE /v2/video_generation/{id}`，带 JSON 请求体，`{}` 即可）：排队中的任务会被 MiniMax 取消（任务随后失败并退款），已完成的任务会删除记录；生成中的任务不能取消。渠道没有提供 `MiniMax-H3` 时，请在请求体里写 `"model"` 为该任务的模型。返回 MiniMax 的 `{task_id, action, status}`，其中是网关的任务 ID。
 
-客户端轮询 `GET /v1/videos/{id}` 或 `GET /v2/query/video_generation/{id}`，从 `GET /v1/videos/{id}/content` 下载；每次下载插件都会向 MiniMax 取新的链接。
+客户端轮询 `GET /v1/videos/{id}` 或 `GET /v2/query/video_generation/{id}`，从 `GET /v1/videos/{id}/content` 下载；每次下载插件都会向 MiniMax 取新的链接。原生查询返回保持 MiniMax 的 `{task: {...}}` 结构（状态、用量、分辨率、Context-IR 任务的 `content.prompt`），`task.id` 是网关的任务 ID，视频完成后 `task.content.url` 是网关自己的产物地址（基于网关服务器地址的签名链接；网关未设置服务器地址时省略）。MiniMax 自己的任务 ID、文件 ID、trace ID 和 CDN 链接不会返回给客户端，经过第二层网关也一样。
 
 ### 图片
 
-OpenAI 字段：`prompt`、`n`（1 到 10）、`size`（`WIDTHxHEIGHT` 或 `auto`）、`response_format`，另支持 MiniMax 的 `aspect_ratio`、`area`（`1K`、`2K`、`4K`）、`output_format`、`output_compression`，文生图还可用 `disable_prompt_enhanced`。图片编辑接受 1 到 16 张参考图，可以用 JSON（`image` 传 URL，或 `images[].image_url`），也可以用 OpenAI SDK 的 multipart 上传（`image` / `image[]`）。图片接口等全部图片生成完才返回；单张失败的图片不放进结果，只有一张都没生成出来才算失败。
+OpenAI 字段：`prompt`、`n`（1 到 10）、`size`（`WIDTHxHEIGHT` 或 `auto`）、`response_format`，另支持 MiniMax 的 `aspect_ratio`、`area`（`1K`、`2K`、`4K`）、`output_format`、`output_compression`，文生图还可用 `disable_prompt_enhanced`。图片编辑接受 1 到 16 张参考图，可以用 JSON（`image` 传 URL，或 `images[].image_url`），也可以用 OpenAI SDK 的 multipart 上传（`image` / `image[]`）。图片接口等全部图片生成完才返回；单张失败的图片不放进结果，只有一张都没生成出来才算失败。网关不保存这类同步返回，所以 `response_format` 为 `url` 时图片链接是 MiniMax 自己的短期链接；用 `b64_json` 时图片直接在返回里。原生返回不带 MiniMax 的 trace ID。
 
 提示词增强（`POST /v1/h3_image_context_ir`，仅 `MiniMax-H3-Image`）：`prompt`，可选 `images`（1 到 16 张，按图片编辑增强）、`size`、`aspect_ratio`、`area`。立即返回 MiniMax 的 `revised_prompt` 和用量。
 
 ### 音乐
 
-`POST /v1/music_generation` 使用 MiniMax 原生请求体：`model`、`prompt`、`lyrics`、`output_format`（默认 `hex`，或 `url`）、`audio_setting`、`lyrics_optimizer`、`is_instrumental`，`music-cover` 还需要 `audio_url`、`audio_base64` 或 `cover_feature_id` 之一。返回 MiniMax 的原始结果（hex 音频，或 24 小时内有效的链接）。MiniMax 自 2026-08-20 起不再向新账号开放音乐接口，只有此前用过的账号还能调用这些模型。
+`POST /v1/music_generation` 使用 MiniMax 原生请求体：`model`、`prompt`、`lyrics`、`output_format`（默认 `hex`，或 `url`）、`audio_setting`、`lyrics_optimizer`、`is_instrumental`，`music-cover` 还需要 `audio_url`、`audio_base64` 或 `cover_feature_id` 之一。返回 MiniMax 的结果，去掉其 trace ID（hex 音频；`output_format` 为 `url` 时是 MiniMax 自己的链接，24 小时内有效）。MiniMax 自 2026-08-20 起不再向新账号开放音乐接口，只有此前用过的账号还能调用这些模型。
 
 ## 计费
 

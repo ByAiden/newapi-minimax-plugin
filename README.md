@@ -87,17 +87,17 @@ Regeneration (`POST /v2/video_regeneration`): either `source_task_id` (the gatew
 
 Cancel or delete (`DELETE /v2/video_generation/{id}` with a JSON body, `{}` is enough): MiniMax cancels a queued task (the task then fails and is refunded) or deletes the record of a finished one; a running task cannot be cancelled. Set `"model"` in the body to the task's model when the channel does not offer `MiniMax-H3`. The reply is MiniMax's `{task_id, action, status}` with the gateway's task id.
 
-Clients poll `GET /v1/videos/{id}` or `GET /v2/query/video_generation/{id}` and download from `GET /v1/videos/{id}/content`; the plugin asks MiniMax for a fresh link on each download.
+Clients poll `GET /v1/videos/{id}` or `GET /v2/query/video_generation/{id}` and download from `GET /v1/videos/{id}/content`; the plugin asks MiniMax for a fresh link on each download. The native query reply keeps MiniMax's `{task: {...}}` shape (status, usage, resolution, `content.prompt` of Context-IR tasks) with the gateway's task id in `task.id` and, once the video is done, the gateway's own artifact address in `task.content.url` (a signed link on the gateway's server address; left out when the gateway has no server address set). MiniMax's own task, file and trace ids and its CDN links are not passed on, also not through a second gateway.
 
 ### Images
 
-OpenAI fields: `prompt`, `n` (1 to 10), `size` (`WIDTHxHEIGHT` or `auto`), `response_format`, plus MiniMax's `aspect_ratio`, `area` (`1K`, `2K`, `4K`), `output_format`, `output_compression` and, on text to image, `disable_prompt_enhanced`. Edits take 1 to 16 reference images as JSON (`image` URLs or `images[].image_url`) or OpenAI SDK multipart uploads (`image` / `image[]`). The image endpoints wait for every image; a failed image is left out, and the request fails only when no image is made.
+OpenAI fields: `prompt`, `n` (1 to 10), `size` (`WIDTHxHEIGHT` or `auto`), `response_format`, plus MiniMax's `aspect_ratio`, `area` (`1K`, `2K`, `4K`), `output_format`, `output_compression` and, on text to image, `disable_prompt_enhanced`. Edits take 1 to 16 reference images as JSON (`image` URLs or `images[].image_url`) or OpenAI SDK multipart uploads (`image` / `image[]`). The image endpoints wait for every image; a failed image is left out, and the request fails only when no image is made. The gateway keeps no copy of these synchronous replies, so with `response_format` `url` the image links are MiniMax's own short-lived ones; `b64_json` keeps the images inside the reply. MiniMax's trace id is left out of the native reply.
 
 Prompt enhancement (`POST /v1/h3_image_context_ir`, `MiniMax-H3-Image` only): `prompt`, optional `images` (1 to 16, enhanced as an edit), `size`, `aspect_ratio`, `area`. It answers at once with MiniMax's `revised_prompt` and usage.
 
 ### Music
 
-`POST /v1/music_generation` takes MiniMax's body: `model`, `prompt`, `lyrics`, `output_format` (`hex` default, or `url`), `audio_setting`, `lyrics_optimizer`, `is_instrumental`, and for `music-cover` one of `audio_url`, `audio_base64` or `cover_feature_id`. It answers with MiniMax's reply (hex audio or a link valid for 24 hours). MiniMax stopped offering its music APIs to new accounts on 2026-08-20; only accounts that used them before can call these models.
+`POST /v1/music_generation` takes MiniMax's body: `model`, `prompt`, `lyrics`, `output_format` (`hex` default, or `url`), `audio_setting`, `lyrics_optimizer`, `is_instrumental`, and for `music-cover` one of `audio_url`, `audio_base64` or `cover_feature_id`. It answers with MiniMax's reply without its trace id (hex audio, or with `output_format` `url` MiniMax's own link, valid for 24 hours). MiniMax stopped offering its music APIs to new accounts on 2026-08-20; only accounts that used them before can call these models.
 
 ## Billing
 

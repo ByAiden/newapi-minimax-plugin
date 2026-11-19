@@ -186,8 +186,10 @@ test("a synchronous reply completes at once and settles on MiniMax's usage", () 
   assert.deepEqual(plugin.extractUsageOnSubmit(ctx, SUCCESS_BODY), { image_count: 1 });
   const rendered = protocols.openai_image.render({}, { task_id: "task_pub", status: "SUCCESS", data: SUCCESS_BODY });
   assert.deepEqual(rendered, { data: [{ url: "https://cdn.example.com/0.jpg", revised_prompt: "a cat, warm light" }], created: 1792308678, output_format: "jpeg" });
-  // The native reply carries every image and failure as MiniMax sent it.
-  assert.deepEqual(native.imageCreated({}, { data: SUCCESS_BODY }), SUCCESS_BODY);
+  // The native reply carries every image and failure as MiniMax sent it,
+  // without MiniMax's trace id.
+  const { request_id: _trace, ...untraced } = SUCCESS_BODY;
+  assert.deepEqual(native.imageCreated({}, { data: SUCCESS_BODY }), untraced);
 });
 
 test("a reply without images fails with MiniMax's reason", () => {

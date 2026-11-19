@@ -162,7 +162,7 @@ export const meta = {
     "en": "MiniMax text, speech, transcription, H3 video, H3-Image and music on one channel",
     "zh": "一个渠道接入 MiniMax 文本、语音合成、语音识别、H3 视频、H3-Image 图片与音乐"
   },
-  "version": "2.0.0",
+  "version": "2.0.1",
   "author": {
     "name": "ByAiden",
     "url": "https://github.com/ByAiden"
@@ -1487,6 +1487,58 @@ function refuseCallback(body) {
   if (present(body.callback_url)) throw new Error("callback_url is not supported; query the task instead");
 }
 
+// A presenter's task: dynamic routes hand over a list of TaskViews.
+function taskView(task) {
+  if (Array.isArray(task)) return plainObject(task[0]) || {};
+  return plainObject(task) || {};
+}
+
+// MiniMax's ids, file ids, trace ids and links do not leave the gateway:
+// members named like an id or a link and string values holding a URL are
+// dropped at every depth.
+const VENDOR_KEY = /(^|_)(id|ids|url|urls)$/i;
+const VENDOR_LINK = /^(https?:)?\/\//i;
+
+function scrubbed(value) {
+  if (Array.isArray(value)) {
+    return value
+      .filter(function (item) {
+        return !(typeof item === "string" && VENDOR_LINK.test(item.trim()));
+      })
+      .map(scrubbed);
+  }
+  if (!plainObject(value)) return value;
+  const out = {};
+  for (const key of Object.keys(value)) {
+    const item = value[key];
+    if (VENDOR_KEY.test(key)) continue;
+    if (typeof item === "string" && VENDOR_LINK.test(item.trim())) continue;
+    out[key] = scrubbed(item);
+  }
+  return out;
+}
+
+// A synchronous MiniMax reply without the trace ids MiniMax adds.
+function withoutTrace(body) {
+  const out = Object.assign({}, plainObject(body) || {});
+  delete out.request_id;
+  delete out.trace_id;
+  return out;
+}
+
+// A MiniMax /v2 task as the gateway presents it: MiniMax's fields (status,
+// usage, the Context-IR prompt...) without its ids and links, the video at
+// the gateway's own artifact address once the task has finished. Without
+// one (a list of tasks, or no public address configured) the link is left
+// out rather than MiniMax's given.
+function presentedH3Task(ctx, current) {
+  const output = scrubbed(current);
+  const artifact = ctx && plainObject(ctx.artifacts) ? plainObject(ctx.artifacts.video) : null;
+  const url = trimmed(artifact && artifact.url);
+  if (url) output.content = Object.assign({}, plainObject(output.content) || {}, { url: url });
+  return output;
+}
+
 function nativeImageIntent(ctx, operation) {
   const body = jsonBody(ctx);
   const model = body.model.trim();
@@ -1513,28 +1565,37 @@ const mediaNative = {
   editImage: function (ctx) {
     return nativeImageIntent(ctx, "edit");
   },
-  // MiniMax answers /v2 with a bare task_id.
+  // MiniMax answers /v2 with a bare task_id: the gateway's own id here.
   taskCreated: function (ctx, task) {
-    return Object.assign({}, plainObject(task.data) || {}, { task_id: task.task_id });
+    const view = taskView(task);
+    const reply = { task_id: view.task_id };
+    const base = plainObject(plainObject(view.data) ? view.data.base_resp : null);
+    if (base) reply.base_resp = scrubbed(base);
+    return reply;
   },
-  // The /v2 query reply, {task: {...}}. Before the first poll the task holds
-  // the create reply, {task_id}, which is not part of it.
+  // The /v2 query reply, {task: {...}}, with the gateway's task id and its
+  // own artifact address in place of MiniMax's. Before the first poll the
+  // task holds the create reply, {task_id}, which is not part of it.
   h3TaskStatus: function (ctx, task) {
-    const data = plainObject(task.data) || {};
-    if (h3APIError(data)) return data;
+    const view = taskView(task);
+    const data = plainObject(view.data) || {};
+    if (h3APIError(data)) return { error: scrubbed(data.error) };
     const current = h3QueryTask(data);
-    const output = Object.assign({}, current || {}, { id: task.task_id });
-    if (task.status === "FAILURE" && output.status !== "failed" && output.status !== "cancelled") {
+    const output = current ? presentedH3Task(ctx, current) : {};
+    output.id = view.task_id;
+    if (view.status === "FAILURE" && output.status !== "failed" && output.status !== "cancelled") {
       output.status = "failed";
-      output.error = { message: task.fail_reason || "task failed" };
+      output.error = { message: view.fail_reason || "task failed" };
     } else if (!current) {
-      output.status = task.status === "IN_PROGRESS" ? "running" : "queued";
+      output.status = view.status === "IN_PROGRESS" ? "running" : "queued";
     }
-    return current ? Object.assign({}, data, { task: output }) : { task: output };
+    return { task: output };
   },
-  // MiniMax's own image reply, with every image and failure as MiniMax sent it.
+  // MiniMax's image reply without its trace id. The gateway keeps no copy of
+  // a synchronous reply, so a url is MiniMax's own short-lived link
+  // (response_format b64_json keeps the images inside the reply).
   imageCreated: function (ctx, task) {
-    return plainObject(task.data) || {};
+    return withoutTrace(taskView(task).data);
   },
   // MiniMax's typed error with the HTTP status.
   error: function (ctx, error) {
@@ -1681,9 +1742,18 @@ function h3ArtifactURL(ctx) {
   return task ? trimmed(task.content && task.content.url) : "";
 }
 
+// A finished video task: MiniMax's link, or another gateway's presenter
+// output, which names the video's modality but may carry no link.
+function hasVideo(ctx) {
+  if (h3ArtifactURL(ctx)) return true;
+  const task = h3QueryTask(artifactData(ctx));
+  if (!task || task.status !== "succeeded") return false;
+  return trimmed(task.modality) === "video" || ["generation", "regeneration"].includes(trimmed(task.task_type));
+}
+
 export function listArtifacts(task) {
   if (task.status !== "SUCCESS") return [];
-  return h3ArtifactURL(task) ? [{ key: "video", type: "video", mimeType: "video/mp4" }] : [];
+  return hasVideo(task) ? [{ key: "video", type: "video", mimeType: "video/mp4" }] : [];
 }
 
 
@@ -2232,12 +2302,13 @@ export const native = Object.assign({}, mediaNative, {
     const data = plainObject(task.data) || {};
     return { task_id: data.task_id, action: data.action, status: data.status };
   },
-  // MiniMax's own replies, unchanged.
+  // MiniMax's replies without its trace ids. A music url (output_format
+  // url) is MiniMax's own link; the default hex keeps the audio in the reply.
   imagePromptEnhanced: function (ctx, task) {
-    return plainObject(task.data) || {};
+    return withoutTrace(taskView(task).data);
   },
   musicCreated: function (ctx, task) {
-    return plainObject(task.data) || {};
+    return withoutTrace(taskView(task).data);
   },
 });
 

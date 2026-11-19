@@ -361,7 +361,9 @@ test("image prompt enhancement bills its input tokens at the image text price", 
   assert.deepEqual(parsed.immediate, { status: "SUCCESS", progress: "100%" });
   assert.deepEqual(plugin.extractUsageOnComplete({ action: "image_prompt", model: "MiniMax-H3-Image" }, parsed.immediate, reply), { image_input_text_tokens: 3489, image_input_image_tokens: 0, image_output_tokens: 0, image_count: 0 });
   assert.equal(plugin.extractUsageOnSubmit(driver(intent), reply), null);
-  assert.deepEqual(native.imagePromptEnhanced({}, { data: reply }), reply);
+  // MiniMax's trace id stays at the gateway.
+  const { request_id: _trace, ...untraced } = reply;
+  assert.deepEqual(native.imagePromptEnhanced({}, { data: reply }), untraced);
   assert.throws(() => plugin.parseSubmitResponse(driver(intent), { statusCode: 200, headers: {}, body: { usage: {} } }), /no enhanced prompt/);
   assert.throws(() => native.enhanceImagePrompt(jsonCtx({ model: "MiniMax-H3-Image-Highspeed", prompt: "x" })), /MiniMax-H3-Image only/);
   assert.throws(() => native.enhanceImagePrompt(jsonCtx({ model: "MiniMax-H3-Image", prompt: "x", n: 2 })), /n is not supported/);
@@ -384,7 +386,7 @@ test("music generation is one billed track, answered with MiniMax's body", () =>
   const parsed = plugin.parseSubmitResponse(driver(intent), { statusCode: 200, headers: {}, body: reply });
   assert.deepEqual(parsed.immediate, { status: "SUCCESS", progress: "100%", url: "https://cdn.example/song.mp3" });
   assert.deepEqual(plugin.extractUsageOnComplete({ action: "music_generation", model: "music-3.0" }, {}, reply), { music_tracks: 1 });
-  assert.deepEqual(native.musicCreated({}, { data: reply }), reply);
+  assert.deepEqual(native.musicCreated({}, { data: Object.assign({ trace_id: "04ede0ab" }, reply) }), reply);
   const hex = plugin.parseSubmitResponse(driver(intent), { statusCode: 200, headers: {}, body: { data: { audio: "494433", status: 2 }, base_resp: { status_code: 0 } } });
   assert.deepEqual(hex.immediate, { status: "SUCCESS", progress: "100%" });
   assert.throws(() => plugin.parseSubmitResponse(driver(intent), { statusCode: 200, headers: {}, body: { base_resp: { status_code: 2013, status_msg: "invalid params" } } }), /invalid params \(2013\)/);
