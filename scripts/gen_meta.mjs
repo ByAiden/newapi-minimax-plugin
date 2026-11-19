@@ -43,7 +43,7 @@ const manifest = {
     en: "MiniMax text, speech, transcription, H3 video, H3-Image and music on one channel",
     zh: "一个渠道接入 MiniMax 文本、语音合成、语音识别、H3 视频、H3-Image 图片与音乐",
   },
-  version: "2.0.1",
+  version: "2.0.2",
   author: author,
   website: "https://platform.minimax.io/docs/api-reference/api-overview",
   baseUrl: "https://api.minimaxi.com",

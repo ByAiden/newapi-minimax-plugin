@@ -1,7 +1,7 @@
 ---
 changelogVersion: 1
 plugin: byaiden_minimax
-version: 2.0.1
+version: 2.0.2
 locale: "en"
 translations:
   zh-CN: CHANGELOG.zh-CN.md
@@ -9,9 +9,9 @@ translations:
 
 # Changelog
 
-## [2.0.1]
+## [2.0.2]
 
-### Fixed
+### Changed
 
-- Native video query replies (`GET /v2/query/video_generation/{id}`, also under `/byaiden_minimax`) no longer pass MiniMax's stored reply through: `task.id` is the gateway's task id, `task.content.url` is the gateway's own artifact address (left out when the gateway has no server address), and MiniMax's task, file and trace ids and CDN links are dropped. Status, usage, resolution and the Context-IR prompt keep MiniMax's shape. The same holds through a second gateway, which still settles on the forwarded usage and downloads from the middle gateway's artifact endpoint.
-- Native create replies of video, Context-IR and regeneration tasks hold only the gateway's `task_id`, and native image, image prompt enhancement and music replies leave out MiniMax's trace ids.
+- README price expressions for `MiniMax-H3-Context-IR`, `MiniMax-H3-Image` and `MiniMax-H3-Image-Highspeed` divide each token term by 1000000 on its own, so the gateway's model page shows them as a price table instead of the raw expression. The amounts charged are unchanged.
+- README notes that the video expressions stay shown as raw expressions, because the free input image allowance (`max(...)`) has no price table form.

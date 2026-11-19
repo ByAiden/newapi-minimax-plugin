@@ -121,13 +121,13 @@ MiniMax 语音合成标价为每万字符 3.5 元（hd）和 2 元（turbo），
 | `MiniMax-H3-Highspeed` | `u("resolution") == "768P" ? tier("768P", u("seconds") * 0.4 + u("input_video_seconds") * 0.4 + max(u("input_images") - 5, 0) * 0.2) : tier("480P", u("seconds") * 0.26 + u("input_video_seconds") * 0.26 + max(u("input_images") - 5, 0) * 0.2)` |
 | `MiniMax-H3-Lite` | `u("resolution") == "768P" ? tier("768P", u("seconds") * 0.26 + u("input_video_seconds") * 0.26 + max(u("input_images") - 5, 0) * 0.13) : tier("480P", u("seconds") * 0.16 + u("input_video_seconds") * 0.16 + max(u("input_images") - 5, 0) * 0.13)` |
 | `MiniMax-H3-Max` | `u("resolution") == "768P" ? tier("768P", u("seconds") * 0.5 + u("input_video_seconds") * 0.97 + max(u("input_images") - 2, 0) * 0.5) : tier("480P", u("seconds") * 0.33 + u("input_video_seconds") * 0.37 + max(u("input_images") - 2, 0) * 0.5)` |
-| `MiniMax-H3-Context-IR` | `tier("base", (u("context_ir_input_tokens") * 5.8 + u("context_ir_output_tokens") * 23) / 1000000)` |
+| `MiniMax-H3-Context-IR` | `tier("base", u("context_ir_input_tokens") * 5.8 / 1000000 + u("context_ir_output_tokens") * 23 / 1000000)` |
 | `MiniMax-H3-Regeneration` | `tier("base", u("seconds") * 0.3 + u("input_video_seconds") * 0.3 + max(u("input_images") - 5, 0) * 0.15)` |
-| `MiniMax-H3-Image` | `tier("base", (u("image_input_text_tokens") * 15 + u("image_input_image_tokens") * 10 + u("image_output_tokens") * 25) / 1000000)` |
-| `MiniMax-H3-Image-Highspeed` | `tier("base", (u("image_input_text_tokens") * 15 + u("image_input_image_tokens") * 20 + u("image_output_tokens") * 50) / 1000000)` |
+| `MiniMax-H3-Image` | `tier("base", u("image_input_text_tokens") * 15 / 1000000 + u("image_input_image_tokens") * 10 / 1000000 + u("image_output_tokens") * 25 / 1000000)` |
+| `MiniMax-H3-Image-Highspeed` | `tier("base", u("image_input_text_tokens") * 15 / 1000000 + u("image_input_image_tokens") * 20 / 1000000 + u("image_output_tokens") * 50 / 1000000)` |
 | `music-3.0`、`music-2.6`、`music-cover` | `tier("base", u("music_tracks") * 1)` |
 
-- 视频：成片的 `seconds` 和 `resolution`，`input_images`（MiniMax 只对前 5 张之外的图片收费，`MiniMax-H3-Max` 是前 2 张之外，所以用 `max(... - 5, 0)`），`input_video_seconds`（MiniMax 报告实际时长前按 15 秒预扣）。请求没写时长按 5 秒计算（原生路径按 15 秒）；没写分辨率按 `768P`（原生路径按该模型最贵的一档）。
+- 视频：成片的 `seconds` 和 `resolution`，`input_images`（MiniMax 只对前 5 张之外的图片收费，`MiniMax-H3-Max` 是前 2 张之外，所以用 `max(... - 5, 0)`；价格表无法表示 `max(...)`，模型页会显示原始表达式，扣费不受影响），`input_video_seconds`（MiniMax 报告实际时长前按 15 秒预扣）。请求没写时长按 5 秒计算（原生路径按 15 秒）；没写分辨率按 `768P`（原生路径按该模型最贵的一档）。
 - Context-IR：`context_ir_input_tokens` 和 `context_ir_output_tokens`，MiniMax 报告前按 16,384 加每个素材 16,384 的输入 token、16,384 的输出 token 预扣（一个简短的文字提示词实际约 5,700 和 3,400）。
 - 重生成：2K 成片的 `seconds`，加上原任务的输入图片和输入视频（MiniMax 会再次计费）；按原任务的数据预扣，未知时按 15 秒。
 - 图片：输入文本、参考图和输出 token，按成功生成的每张图计；按张定价时用 `image_count`。提交时先预扣估算值（每 1024 像素 1 个输出 token，每张至少 4096 个；`auto` 尺寸按 `area` 算，默认 4K）。提示词增强在 `MiniMax-H3-Image` 上只计输入文本 token，上面的表达式已经覆盖；按张定价时不收费。
