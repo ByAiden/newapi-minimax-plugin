@@ -47,24 +47,29 @@ const SUCCESS_BODY = {
   request_id: "req",
 };
 
-test("manifest declares the H3 video family and H3 image models only", () => {
+test("manifest declares one channel's models: text, speech, transcription, video, image and music", () => {
   assert.equal(meta.apiVersion, 1);
   assert.ok(meta.key.length <= 30);
-  assert.equal(meta.version, "1.2.3");
+  assert.equal(meta.key, plugin.PLUGIN_KEY);
   assert.equal(meta.baseUrl, "https://api.minimaxi.com");
   assert.equal(meta.channelTypes, undefined);
+  assert.deepEqual(meta.upstreams, ["vendor", "new_api"]);
   assert.match(meta.version, /^\d+\.\d+\.\d+$/);
-  assert.deepEqual(meta.models, ["MiniMax-H3", "MiniMax-H3-Highspeed", "MiniMax-H3-Lite", "MiniMax-H3-Max", "MiniMax-H3-Image", "MiniMax-H3-Image-Highspeed"]);
-  for (const name of ["MiniMax-Hailuo-2.3", "MiniMax-Hailuo-02", "T2V-01", "I2V-01"]) assert.ok(!JSON.stringify(meta).includes(name));
+  assert.deepEqual(meta.models, plugin.MODEL_IDS);
+  for (const model of VIDEO.concat(["MiniMax-H3-Context-IR", "MiniMax-H3-Regeneration", "MiniMax-H3-Image", "MiniMax-H3-Image-Highspeed", "MiniMax-M3.1-Flash", "speech-2.8-hd", "asr-1.0", "music-3.0"]))
+    assert.ok(meta.models.includes(model), model);
+  for (const name of ["MiniMax-Hailuo-2.3", "MiniMax-Hailuo-02", "T2V-01", "I2V-01", "music-3.0-free"]) assert.ok(!JSON.stringify(meta).includes(name));
   const keys = Object.keys(meta.usageSchema).sort();
   for (const example of meta.usageExamples) assert.deepEqual(Object.keys(example.facts).sort(), keys);
   for (const profile of meta.usageProfiles) {
     assert.ok(profile.examples.length);
     for (const model of profile.models) assert.ok(meta.models.includes(model));
     for (const example of profile.examples) assert.deepEqual(Object.keys(example.facts).sort(), Object.keys(profile.schema).sort());
+    for (const key of Object.keys(profile.schema)) assert.deepEqual(Object.keys(meta.usageSchema[key]).sort(), Object.keys(profile.schema[key]).sort());
   }
+  // Every task model has exactly one price profile; relay models have none.
   const covered = meta.usageProfiles.flatMap((profile) => profile.models).sort();
-  assert.deepEqual(covered, meta.models.slice().sort());
+  assert.deepEqual(covered, plugin.TASK_MODELS.slice().sort());
   assert.ok(!JSON.stringify(meta.description).includes("$"));
   assert.deepEqual(
     meta.protocols.map((p) => [p.name, p.models]),
@@ -370,6 +375,18 @@ test("code never references meta, so the gateway can read it statically", async 
   const { readFileSync } = await import("node:fs");
   const src = readFileSync(new URL("../plugin.js", import.meta.url), "utf8");
   const rest = src.slice(src.indexOf("\n};\n", src.indexOf("export const meta = {")));
-  assert.doesNotMatch(rest, /(^|[^A-Za-z0-9_$.])meta([^A-Za-z0-9_$]|$)/m);
-  assert.ok(rest.includes(JSON.stringify(meta.key)));
+  const before = src.slice(0, src.indexOf("export const meta = {"));
+  for (const part of [before, rest]) assert.doesNotMatch(part, /(^|[^A-Za-z0-9_$.])meta([^A-Za-z0-9_$]|$)/m);
+  assert.ok(before.includes("export const PLUGIN_KEY = " + JSON.stringify(meta.key) + ";"));
+});
+
+test("CHANGELOG files describe exactly this version and key", async () => {
+  const { readFile } = await import("node:fs/promises");
+  for (const name of ["CHANGELOG.md", "CHANGELOG.zh-CN.md"]) {
+    const text = await readFile(new URL("../" + name, import.meta.url), "utf8");
+    assert.match(text, new RegExp("\\nversion: " + meta.version.replace(/\./g, "\\.") + "\\n"), name);
+    assert.match(text, new RegExp("\\nplugin: " + meta.key + "\\n"), name);
+    const sections = text.match(/^## \[[^\]]+\]/gm);
+    assert.deepEqual(sections, ["## [" + meta.version + "]"], name);
+  }
 });

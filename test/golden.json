@@ -20,7 +20,7 @@
           "upstreamModel": "MiniMax-H3",
           "baseUrl": "https://api.minimaxi.com",
           "apiKey": "test-key",
-          "authHeader": "Bearer test-key",
+          "authHeader": "test-key",
           "upstream": {
             "kind": "vendor"
           },
@@ -72,7 +72,7 @@
           "upstreamModel": "MiniMax-H3",
           "baseUrl": "https://api.minimaxi.com",
           "apiKey": "test-key",
-          "authHeader": "Bearer test-key",
+          "authHeader": "test-key",
           "upstream": {
             "kind": "vendor"
           },
@@ -86,53 +86,6 @@
         "resolution": "768P",
         "input_images": 0,
         "input_video_seconds": 0
-      }
-    },
-    {
-      "name": "image request",
-      "hook": "buildSubmitRequest",
-      "args": [
-        {
-          "requestBody": {
-            "model": "MiniMax-H3-Image",
-            "imageOperation": "generate",
-            "imageBody": {
-              "prompt": "A cat",
-              "n": 1
-            }
-          },
-          "requestHeaders": {
-            "Content-Type": "application/json",
-            "Accept": ""
-          },
-          "action": "text_to_image",
-          "model": "MiniMax-H3-Image",
-          "upstreamModel": "MiniMax-H3-Image",
-          "baseUrl": "https://api.minimaxi.com",
-          "apiKey": "test-key",
-          "authHeader": "Bearer test-key",
-          "upstream": {
-            "kind": "vendor"
-          },
-          "config": {},
-          "files": [],
-          "publicTaskId": "task_public"
-        }
-      ],
-      "expected": {
-        "url": "https://api.minimaxi.com/v1/images/generations",
-        "method": "POST",
-        "headers": {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-          "Authorization": "Bearer test-key"
-        },
-        "body": {
-          "prompt": "A cat",
-          "n": 1,
-          "model": "MiniMax-H3-Image"
-        },
-        "action": "text_to_image"
       }
     },
     {
@@ -155,7 +108,7 @@
           "upstreamModel": "MiniMax-H3",
           "baseUrl": "https://api.minimaxi.com",
           "apiKey": "test-key",
-          "authHeader": "Bearer test-key",
+          "authHeader": "test-key",
           "upstream": {
             "kind": "vendor"
           },
@@ -179,18 +132,50 @@
       }
     },
     {
+      "name": "query on the vendor path",
+      "hook": "buildQueryRequest",
+      "args": [
+        {
+          "taskId": "mm1",
+          "publicTaskId": "task_public",
+          "action": "text_to_video",
+          "model": "MiniMax-H3",
+          "upstreamModel": "MiniMax-H3",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {}
+        }
+      ],
+      "expected": {
+        "url": "https://api.minimaxi.com/v2/query/video_generation/mm1",
+        "method": "GET",
+        "headers": {
+          "Accept": "application/json",
+          "Authorization": "Bearer test-key"
+        }
+      }
+    },
+    {
       "name": "video running",
       "hook": "parseTaskResult",
       "args": [
         {
           "taskId": "mm1",
+          "publicTaskId": "task_public",
+          "action": "text_to_video",
           "model": "MiniMax-H3",
           "upstreamModel": "MiniMax-H3",
           "baseUrl": "https://api.minimaxi.com",
           "apiKey": "test-key",
+          "authHeader": "test-key",
           "upstream": {
             "kind": "vendor"
-          }
+          },
+          "config": {}
         },
         {
           "task": {
@@ -214,13 +199,17 @@
       "args": [
         {
           "taskId": "mm1",
+          "publicTaskId": "task_public",
+          "action": "text_to_video",
           "model": "MiniMax-H3",
           "upstreamModel": "MiniMax-H3",
           "baseUrl": "https://api.minimaxi.com",
           "apiKey": "test-key",
+          "authHeader": "test-key",
           "upstream": {
             "kind": "vendor"
-          }
+          },
+          "config": {}
         },
         {
           "task": {
@@ -248,13 +237,17 @@
       "args": [
         {
           "taskId": "mm1",
+          "publicTaskId": "task_public",
+          "action": "text_to_video",
           "model": "MiniMax-H3",
           "upstreamModel": "MiniMax-H3",
           "baseUrl": "https://api.minimaxi.com",
           "apiKey": "test-key",
+          "authHeader": "test-key",
           "upstream": {
             "kind": "vendor"
-          }
+          },
+          "config": {}
         },
         {
           "task": {
@@ -272,27 +265,1343 @@
       }
     },
     {
-      "name": "query on the vendor path",
-      "hook": "buildQueryRequest",
+      "name": "video settles on MiniMax's usage",
+      "hook": "extractUsageOnComplete",
       "args": [
         {
           "taskId": "mm1",
+          "publicTaskId": "task_public",
+          "action": "text_to_video",
           "model": "MiniMax-H3",
           "upstreamModel": "MiniMax-H3",
           "baseUrl": "https://api.minimaxi.com",
           "apiKey": "test-key",
+          "authHeader": "test-key",
           "upstream": {
             "kind": "vendor"
+          },
+          "config": {}
+        },
+        {
+          "status": "SUCCESS"
+        },
+        {
+          "task": {
+            "id": "mm1",
+            "status": "succeeded",
+            "resolution": "768P",
+            "task_type": "generation",
+            "content": {
+              "url": "https://cdn.example/v.mp4"
+            },
+            "usage": {
+              "output_seconds": 6,
+              "input_image_count": 0,
+              "input_seconds": 0
+            }
           }
         }
       ],
       "expected": {
-        "url": "https://api.minimaxi.com/v2/query/video_generation/mm1",
+        "resolution": "768P",
+        "seconds": 6,
+        "input_images": 0,
+        "input_video_seconds": 0
+      }
+    },
+    {
+      "name": "video artifact",
+      "hook": "listArtifacts",
+      "args": [
+        {
+          "status": "SUCCESS",
+          "data": {
+            "task": {
+              "id": "mm1",
+              "status": "succeeded",
+              "resolution": "768P",
+              "task_type": "generation",
+              "content": {
+                "url": "https://cdn.example/v.mp4"
+              },
+              "usage": {
+                "output_seconds": 6,
+                "input_image_count": 0,
+                "input_seconds": 0
+              }
+            }
+          }
+        }
+      ],
+      "expected": [
+        {
+          "key": "video",
+          "type": "video",
+          "mimeType": "video/mp4"
+        }
+      ]
+    },
+    {
+      "name": "download falls back to the stored link",
+      "hook": "buildContentRequest",
+      "args": [
+        {
+          "artifactKey": "video",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "data": {
+            "task": {
+              "id": "mm1",
+              "status": "succeeded",
+              "resolution": "768P",
+              "task_type": "generation",
+              "content": {
+                "url": "https://cdn.example/v.mp4"
+              },
+              "usage": {
+                "output_seconds": 6,
+                "input_image_count": 0,
+                "input_seconds": 0
+              }
+            }
+          },
+          "clientRequest": {
+            "method": "GET"
+          }
+        }
+      ],
+      "expected": {
+        "url": "https://cdn.example/v.mp4",
         "method": "GET",
+        "credentialless": true
+      }
+    },
+    {
+      "name": "download through another gateway",
+      "hook": "buildContentRequest",
+      "args": [
+        {
+          "artifactKey": "video",
+          "baseUrl": "https://mid.example",
+          "apiKey": "sk-mid",
+          "authHeader": "Bearer sk-mid",
+          "upstreamTaskId": "task_mid",
+          "upstream": {
+            "kind": "new_api"
+          },
+          "data": {},
+          "clientRequest": {
+            "method": "GET"
+          }
+        }
+      ],
+      "expected": {
+        "url": "https://mid.example/v1/tasks/task_mid/artifacts/video/content",
+        "method": "GET",
+        "headers": {
+          "Authorization": "Bearer sk-mid"
+        }
+      }
+    },
+    {
+      "name": "image request",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "model": "MiniMax-H3-Image",
+            "imageOperation": "generate",
+            "imageBody": {
+              "prompt": "A cat",
+              "n": 1
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "text_to_image",
+          "model": "MiniMax-H3-Image",
+          "upstreamModel": "MiniMax-H3-Image",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expected": {
+        "url": "https://api.minimaxi.com/v1/images/generations",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer test-key"
+        },
+        "body": {
+          "prompt": "A cat",
+          "n": 1,
+          "model": "MiniMax-H3-Image"
+        },
+        "action": "text_to_image"
+      }
+    },
+    {
+      "name": "image reservation",
+      "hook": "extractUsage",
+      "args": [
+        {
+          "requestBody": {
+            "model": "MiniMax-H3-Image",
+            "imageOperation": "generate",
+            "imageBody": {
+              "prompt": "A cat",
+              "n": 1
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "text_to_image",
+          "model": "MiniMax-H3-Image",
+          "upstreamModel": "MiniMax-H3-Image",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expected": {
+        "image_input_text_tokens": 8197,
+        "image_input_image_tokens": 0,
+        "image_output_tokens": 16384,
+        "image_count": 1
+      }
+    },
+    {
+      "name": "context-ir request runs on MiniMax-H3",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "kind": "context_ir",
+            "model": "MiniMax-H3-Context-IR",
+            "vendorBody": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "A boy playing basketball by the sea"
+                }
+              ],
+              "duration": 5,
+              "ratio": "16:9"
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "h3_context_ir",
+          "model": "MiniMax-H3-Context-IR",
+          "upstreamModel": "MiniMax-H3-Context-IR",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expected": {
+        "url": "https://api.minimaxi.com/v2/h3_context_ir",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer test-key"
+        },
+        "body": {
+          "content": [
+            {
+              "type": "text",
+              "text": "A boy playing basketball by the sea"
+            }
+          ],
+          "duration": 5,
+          "ratio": "16:9",
+          "model": "MiniMax-H3"
+        },
+        "action": "h3_context_ir"
+      }
+    },
+    {
+      "name": "context-ir reservation",
+      "hook": "extractUsage",
+      "args": [
+        {
+          "requestBody": {
+            "kind": "context_ir",
+            "model": "MiniMax-H3-Context-IR",
+            "vendorBody": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "A boy playing basketball by the sea"
+                }
+              ],
+              "duration": 5,
+              "ratio": "16:9"
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "h3_context_ir",
+          "model": "MiniMax-H3-Context-IR",
+          "upstreamModel": "MiniMax-H3-Context-IR",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expected": {
+        "context_ir_input_tokens": 16419,
+        "context_ir_output_tokens": 16384
+      }
+    },
+    {
+      "name": "context-ir settles on tokens",
+      "hook": "extractUsageOnComplete",
+      "args": [
+        {
+          "taskId": "mm1",
+          "publicTaskId": "task_public",
+          "action": "h3_context_ir",
+          "model": "MiniMax-H3-Context-IR",
+          "upstreamModel": "MiniMax-H3-Context-IR",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {}
+        },
+        {
+          "status": "SUCCESS"
+        },
+        {
+          "task": {
+            "id": "cir1",
+            "status": "succeeded",
+            "task_type": "h3_context_ir",
+            "content": {
+              "prompt": "Structured prompt"
+            },
+            "usage": {
+              "prompt_tokens": 5664,
+              "completion_tokens": 3426,
+              "total_tokens": 9090
+            }
+          }
+        }
+      ],
+      "expected": {
+        "context_ir_input_tokens": 5664,
+        "context_ir_output_tokens": 3426
+      }
+    },
+    {
+      "name": "context-ir has no download",
+      "hook": "listArtifacts",
+      "args": [
+        {
+          "status": "SUCCESS",
+          "action": "h3_context_ir",
+          "data": {
+            "task": {
+              "id": "cir1",
+              "status": "succeeded",
+              "task_type": "h3_context_ir",
+              "content": {
+                "prompt": "Structured prompt"
+              },
+              "usage": {
+                "prompt_tokens": 5664,
+                "completion_tokens": 3426,
+                "total_tokens": 9090
+              }
+            }
+          }
+        }
+      ],
+      "expected": []
+    },
+    {
+      "name": "regeneration sends MiniMax's source id",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "kind": "regeneration",
+            "model": "MiniMax-H3-Regeneration",
+            "vendorBody": {
+              "resolution": "2K"
+            },
+            "sourceTaskId": "task_src"
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "video_regeneration",
+          "model": "MiniMax-H3-Regeneration",
+          "upstreamModel": "MiniMax-H3-Regeneration",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public",
+          "originTasks": [
+            {
+              "taskId": "task_src",
+              "upstreamTaskId": "mm-src",
+              "action": "text_to_video",
+              "status": "SUCCESS",
+              "data": {
+                "task": {
+                  "id": "mm1",
+                  "status": "succeeded",
+                  "resolution": "768P",
+                  "task_type": "generation",
+                  "content": {
+                    "url": "https://cdn.example/v.mp4"
+                  },
+                  "usage": {
+                    "output_seconds": 6,
+                    "input_image_count": 0,
+                    "input_seconds": 0
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "url": "https://api.minimaxi.com/v2/video_regeneration",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer test-key"
+        },
+        "body": {
+          "resolution": "2K",
+          "model": "MiniMax-H3",
+          "source_task_id": "mm-src"
+        },
+        "action": "video_regeneration"
+      }
+    },
+    {
+      "name": "regeneration reserves the source's facts",
+      "hook": "extractUsage",
+      "args": [
+        {
+          "requestBody": {
+            "kind": "regeneration",
+            "model": "MiniMax-H3-Regeneration",
+            "vendorBody": {
+              "resolution": "2K"
+            },
+            "sourceTaskId": "task_src"
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "video_regeneration",
+          "model": "MiniMax-H3-Regeneration",
+          "upstreamModel": "MiniMax-H3-Regeneration",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public",
+          "originTasks": [
+            {
+              "taskId": "task_src",
+              "upstreamTaskId": "mm-src",
+              "action": "text_to_video",
+              "status": "SUCCESS",
+              "data": {
+                "task": {
+                  "id": "mm1",
+                  "status": "succeeded",
+                  "resolution": "768P",
+                  "task_type": "generation",
+                  "content": {
+                    "url": "https://cdn.example/v.mp4"
+                  },
+                  "usage": {
+                    "output_seconds": 6,
+                    "input_image_count": 0,
+                    "input_seconds": 0
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "seconds": 6,
+        "input_images": 0,
+        "input_video_seconds": 0
+      }
+    },
+    {
+      "name": "regeneration without its source task",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "kind": "regeneration",
+            "model": "MiniMax-H3-Regeneration",
+            "vendorBody": {
+              "resolution": "2K"
+            },
+            "sourceTaskId": "task_src"
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "video_regeneration",
+          "model": "MiniMax-H3-Regeneration",
+          "upstreamModel": "MiniMax-H3-Regeneration",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expectedError": "the source task was not found"
+    },
+    {
+      "name": "cancel deletes at MiniMax",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "kind": "cancel",
+            "model": "MiniMax-H3",
+            "taskId": "task_v"
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "cancel_task",
+          "model": "MiniMax-H3",
+          "upstreamModel": "MiniMax-H3",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public",
+          "originTasks": [
+            {
+              "taskId": "task_v",
+              "upstreamTaskId": "424010985738629",
+              "action": "text_to_video",
+              "status": "QUEUED",
+              "data": {
+                "task_id": "424010985738629"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "url": "https://api.minimaxi.com/v2/video_generation/424010985738629",
+        "method": "DELETE",
         "headers": {
           "Accept": "application/json",
           "Authorization": "Bearer test-key"
+        },
+        "action": "cancel_task"
+      }
+    },
+    {
+      "name": "cancel costs nothing",
+      "hook": "extractUsage",
+      "args": [
+        {
+          "requestBody": {
+            "kind": "cancel",
+            "model": "MiniMax-H3",
+            "taskId": "task_v"
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "cancel_task",
+          "model": "MiniMax-H3",
+          "upstreamModel": "MiniMax-H3",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public",
+          "originTasks": [
+            {
+              "taskId": "task_v",
+              "upstreamTaskId": "424010985738629",
+              "action": "text_to_video",
+              "status": "QUEUED",
+              "data": {
+                "task_id": "424010985738629"
+              }
+            }
+          ]
         }
+      ],
+      "expected": {
+        "seconds": 0,
+        "resolution": "768P",
+        "input_images": 0,
+        "input_video_seconds": 0
+      }
+    },
+    {
+      "name": "cancel completes at once",
+      "hook": "parseSubmitResponse",
+      "args": [
+        {
+          "requestBody": {
+            "kind": "cancel",
+            "model": "MiniMax-H3",
+            "taskId": "task_v"
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "cancel_task",
+          "model": "MiniMax-H3",
+          "upstreamModel": "MiniMax-H3",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public",
+          "originTasks": [
+            {
+              "taskId": "task_v",
+              "upstreamTaskId": "424010985738629",
+              "action": "text_to_video",
+              "status": "QUEUED",
+              "data": {
+                "task_id": "424010985738629"
+              }
+            }
+          ]
+        },
+        {
+          "statusCode": 200,
+          "headers": {},
+          "body": {
+            "task_id": "424010985738629",
+            "action": "cancelled",
+            "status": "cancelled"
+          }
+        }
+      ],
+      "expected": {
+        "taskId": "task_public",
+        "taskData": {
+          "task_id": "task_v",
+          "action": "cancelled",
+          "status": "cancelled"
+        },
+        "immediate": {
+          "status": "SUCCESS",
+          "progress": "100%"
+        }
+      }
+    },
+    {
+      "name": "image prompt request",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "kind": "image_prompt",
+            "model": "MiniMax-H3-Image",
+            "promptBody": {
+              "prompt": "A ginger cat on a windowsill"
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "image_prompt",
+          "model": "MiniMax-H3-Image",
+          "upstreamModel": "MiniMax-H3-Image",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expected": {
+        "url": "https://api.minimaxi.com/v1/h3_image_context_ir",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer test-key"
+        },
+        "body": {
+          "prompt": "A ginger cat on a windowsill",
+          "model": "MiniMax-H3-Image"
+        },
+        "action": "image_prompt"
+      }
+    },
+    {
+      "name": "image prompt completes at once",
+      "hook": "parseSubmitResponse",
+      "args": [
+        {
+          "requestBody": {
+            "kind": "image_prompt",
+            "model": "MiniMax-H3-Image",
+            "promptBody": {
+              "prompt": "A ginger cat on a windowsill"
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "image_prompt",
+          "model": "MiniMax-H3-Image",
+          "upstreamModel": "MiniMax-H3-Image",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        },
+        {
+          "statusCode": 200,
+          "headers": {},
+          "body": {
+            "revised_prompt": "A ginger tabby cat",
+            "usage": {
+              "input_tokens": 3489,
+              "total_tokens": 3489
+            }
+          }
+        }
+      ],
+      "expected": {
+        "taskId": "task_public",
+        "taskData": {
+          "revised_prompt": "A ginger tabby cat",
+          "usage": {
+            "input_tokens": 3489,
+            "total_tokens": 3489
+          }
+        },
+        "immediate": {
+          "status": "SUCCESS",
+          "progress": "100%"
+        }
+      }
+    },
+    {
+      "name": "image prompt settles on input tokens",
+      "hook": "extractUsageOnComplete",
+      "args": [
+        {
+          "taskId": "mm1",
+          "publicTaskId": "task_public",
+          "action": "image_prompt",
+          "model": "MiniMax-H3-Image",
+          "upstreamModel": "MiniMax-H3",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {}
+        },
+        {
+          "status": "SUCCESS"
+        },
+        {
+          "revised_prompt": "A ginger tabby cat",
+          "usage": {
+            "input_tokens": 3489
+          }
+        }
+      ],
+      "expected": {
+        "image_input_text_tokens": 3489,
+        "image_input_image_tokens": 0,
+        "image_output_tokens": 0,
+        "image_count": 0
+      }
+    },
+    {
+      "name": "music request",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "kind": "music",
+            "model": "music-3.0",
+            "musicBody": {
+              "prompt": "Indie folk",
+              "lyrics": "[verse]\nStreetlights flicker",
+              "output_format": "url"
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "music_generation",
+          "model": "music-3.0",
+          "upstreamModel": "music-3.0",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expected": {
+        "url": "https://api.minimaxi.com/v1/music_generation",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer test-key"
+        },
+        "body": {
+          "prompt": "Indie folk",
+          "lyrics": "[verse]\nStreetlights flicker",
+          "output_format": "url",
+          "model": "music-3.0"
+        },
+        "action": "music_generation"
+      }
+    },
+    {
+      "name": "music reserves one track",
+      "hook": "extractUsage",
+      "args": [
+        {
+          "requestBody": {
+            "kind": "music",
+            "model": "music-3.0",
+            "musicBody": {
+              "prompt": "Indie folk",
+              "lyrics": "[verse]\nStreetlights flicker",
+              "output_format": "url"
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "music_generation",
+          "model": "music-3.0",
+          "upstreamModel": "music-3.0",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expected": {
+        "music_tracks": 1
+      }
+    },
+    {
+      "name": "music business error fails the request",
+      "hook": "parseSubmitResponse",
+      "args": [
+        {
+          "requestBody": {
+            "kind": "music",
+            "model": "music-3.0",
+            "musicBody": {
+              "prompt": "Indie folk",
+              "lyrics": "[verse]\nStreetlights flicker",
+              "output_format": "url"
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "music_generation",
+          "model": "music-3.0",
+          "upstreamModel": "music-3.0",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        },
+        {
+          "statusCode": 200,
+          "headers": {},
+          "body": {
+            "base_resp": {
+              "status_code": 2013,
+              "status_msg": "invalid params"
+            }
+          }
+        }
+      ],
+      "expectedError": "invalid params (2013)"
+    },
+    {
+      "name": "speech request",
+      "hook": "convertRequest",
+      "args": [
+        {
+          "baseUrl": "https://api.minimaxi.com",
+          "path": "/v1/audio/speech",
+          "config": {
+            "defaultVoice": "English_Graceful_Lady"
+          }
+        },
+        {
+          "model": "speech-2.8-turbo",
+          "stream": false,
+          "body": {
+            "model": "speech-2.8-turbo",
+            "input": "Hello",
+            "voice": "alloy"
+          }
+        }
+      ],
+      "expected": {
+        "method": "POST",
+        "body": {
+          "model": "speech-2.8-turbo",
+          "text": "Hello",
+          "stream": true,
+          "stream_options": {
+            "exclude_aggregated_audio": true
+          },
+          "voice_setting": {
+            "voice_id": "English_Graceful_Lady"
+          },
+          "audio_setting": {
+            "format": "mp3"
+          }
+        },
+        "stream": true,
+        "state": {
+          "kind": "speech",
+          "format": "mp3",
+          "clientStream": false,
+          "chunks": 0,
+          "characters": 0
+        }
+      }
+    },
+    {
+      "name": "speech hex chunk becomes bytes",
+      "hook": "convertStreamEvent",
+      "args": [
+        {
+          "state": {
+            "kind": "speech",
+            "format": "mp3",
+            "clientStream": false,
+            "chunks": 0,
+            "characters": 0
+          },
+          "baseUrl": "https://api.minimaxi.com",
+          "path": "/v1/audio/speech",
+          "config": {
+            "defaultVoice": "English_Graceful_Lady"
+          }
+        },
+        {
+          "data": "{\"data\":{\"audio\":\"494433\",\"status\":1},\"base_resp\":{\"status_code\":0}}"
+        }
+      ],
+      "expected": {
+        "state": {
+          "chunks": 1,
+          "characters": 0,
+          "kind": "speech",
+          "format": "mp3",
+          "clientStream": false
+        },
+        "chunks": [
+          {
+            "bodyBase64": "SUQz"
+          }
+        ],
+        "contentType": "audio/mpeg"
+      }
+    },
+    {
+      "name": "speech without audio fails",
+      "hook": "convertStreamEvent",
+      "args": [
+        {
+          "state": {
+            "kind": "speech",
+            "format": "mp3",
+            "clientStream": false,
+            "chunks": 0,
+            "characters": 0
+          },
+          "baseUrl": "https://api.minimaxi.com",
+          "path": "/v1/audio/speech",
+          "config": {
+            "defaultVoice": "English_Graceful_Lady"
+          }
+        },
+        {
+          "done": true
+        }
+      ],
+      "expected": {
+        "error": {
+          "status": 502,
+          "message": "MiniMax returned no audio",
+          "type": "upstream_error"
+        }
+      }
+    },
+    {
+      "name": "speech business error",
+      "hook": "convertStreamEvent",
+      "args": [
+        {
+          "state": {
+            "kind": "speech",
+            "format": "mp3",
+            "clientStream": false,
+            "chunks": 0,
+            "characters": 0
+          },
+          "baseUrl": "https://api.minimaxi.com",
+          "path": "/v1/audio/speech",
+          "config": {
+            "defaultVoice": "English_Graceful_Lady"
+          }
+        },
+        {
+          "data": "{\"base_resp\":{\"status_code\":1004,\"status_msg\":\"login fail\"}}"
+        }
+      ],
+      "expected": {
+        "error": {
+          "status": 401,
+          "message": "MiniMax: login fail (1004)",
+          "type": "upstream_error",
+          "code": "1004"
+        }
+      }
+    },
+    {
+      "name": "transcription request",
+      "hook": "convertRequest",
+      "args": [
+        {
+          "baseUrl": "https://api.minimaxi.com",
+          "path": "/v1/audio/transcriptions",
+          "config": {}
+        },
+        {
+          "model": "asr-1.0",
+          "stream": false,
+          "form": {
+            "fields": {
+              "model": [
+                "asr-1.0"
+              ],
+              "language": [
+                "en"
+              ]
+            },
+            "files": [
+              {
+                "field": "file",
+                "filename": "a.mp3",
+                "contentType": "audio/mpeg",
+                "size": 9
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "method": "POST",
+        "form": {
+          "fields": {
+            "model": "asr-1.0",
+            "response_format": "json"
+          },
+          "files": [
+            {
+              "field": "file",
+              "from": "file"
+            }
+          ]
+        },
+        "headers": {
+          "language": "en"
+        },
+        "stream": false,
+        "state": {
+          "kind": "transcription",
+          "responseFormat": "json",
+          "language": "en"
+        }
+      }
+    },
+    {
+      "name": "transcription bills seconds",
+      "hook": "convertResponse",
+      "args": [
+        {
+          "state": {
+            "kind": "transcription",
+            "responseFormat": "json",
+            "language": "en"
+          },
+          "baseUrl": "https://api.minimaxi.com",
+          "path": "/v1/audio/transcriptions",
+          "config": {}
+        },
+        {
+          "status": 200,
+          "headers": {},
+          "body": "{\"text\":\"Hello.\",\"duration\":2.04}"
+        }
+      ],
+      "expected": {
+        "body": {
+          "text": "Hello.",
+          "usage": {
+            "type": "tokens",
+            "input_tokens": 3,
+            "output_tokens": 0,
+            "total_tokens": 3,
+            "prompt_tokens": 3,
+            "completion_tokens": 0,
+            "seconds": 3
+          }
+        }
+      }
+    },
+    {
+      "name": "model list adds the media models",
+      "hook": "convertResponse",
+      "args": [
+        {
+          "baseUrl": "https://api.minimaxi.com",
+          "path": "/v1/models",
+          "config": {},
+          "state": null
+        },
+        {
+          "status": 200,
+          "headers": {},
+          "body": "{\"object\":\"list\",\"data\":[{\"id\":\"MiniMax-M3.1-Flash\",\"object\":\"model\"}]}"
+        }
+      ],
+      "expected": {
+        "body": {
+          "object": "list",
+          "data": [
+            {
+              "id": "MiniMax-M3.1-Flash",
+              "object": "model",
+              "owned_by": "minimax"
+            },
+            {
+              "id": "MiniMax-H3",
+              "object": "model",
+              "owned_by": "minimax"
+            },
+            {
+              "id": "MiniMax-H3-Highspeed",
+              "object": "model",
+              "owned_by": "minimax"
+            },
+            {
+              "id": "MiniMax-H3-Lite",
+              "object": "model",
+              "owned_by": "minimax"
+            },
+            {
+              "id": "MiniMax-H3-Max",
+              "object": "model",
+              "owned_by": "minimax"
+            },
+            {
+              "id": "MiniMax-H3-Context-IR",
+              "object": "model",
+              "owned_by": "minimax"
+            },
+            {
+              "id": "MiniMax-H3-Regeneration",
+              "object": "model",
+              "owned_by": "minimax"
+            },
+            {
+              "id": "MiniMax-H3-Image",
+              "object": "model",
+              "owned_by": "minimax"
+            },
+            {
+              "id": "MiniMax-H3-Image-Highspeed",
+              "object": "model",
+              "owned_by": "minimax"
+            },
+            {
+              "id": "music-3.0",
+              "object": "model",
+              "owned_by": "minimax"
+            },
+            {
+              "id": "music-2.6",
+              "object": "model",
+              "owned_by": "minimax"
+            },
+            {
+              "id": "music-cover",
+              "object": "model",
+              "owned_by": "minimax"
+            },
+            {
+              "id": "speech-2.8-hd",
+              "object": "model",
+              "owned_by": "minimax"
+            },
+            {
+              "id": "speech-2.8-turbo",
+              "object": "model",
+              "owned_by": "minimax"
+            },
+            {
+              "id": "speech-2.6-hd",
+              "object": "model",
+              "owned_by": "minimax"
+            },
+            {
+              "id": "speech-2.6-turbo",
+              "object": "model",
+              "owned_by": "minimax"
+            },
+            {
+              "id": "speech-02-hd",
+              "object": "model",
+              "owned_by": "minimax"
+            },
+            {
+              "id": "speech-02-turbo",
+              "object": "model",
+              "owned_by": "minimax"
+            },
+            {
+              "id": "asr-1.0",
+              "object": "model",
+              "owned_by": "minimax"
+            }
+          ]
+        },
+        "contentType": "application/json"
       }
     }
   ]

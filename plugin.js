@@ -1,159 +1,202 @@
-// MiniMax-H3 family video generation (H3, H3-Highspeed, H3-Lite, H3-Max) on
-// MiniMax's /v2 video API, and MiniMax-H3-Image
-// text-to-image and image editing on its synchronous OpenAI-style image API.
+// MiniMax on one channel: text (OpenAI Chat Completions, Responses and
+// Anthropic Messages, passed through), speech and transcription (converted from
+// the OpenAI audio endpoints), MiniMax-H3 video tasks (generation,
+// H3-Context-IR, regeneration, cancel and delete), MiniMax-H3-Image generation,
+// editing and prompt enhancement, and music generation.
+
+// ---------------------------------------------------------------------------
+// Models. The manifest below is a plain literal written from these by
+// scripts/gen_meta.mjs; a test checks that the two agree.
+
+export const PLUGIN_KEY = "byaiden_minimax";
+
+// The text models MiniMax lists at GET /v1/models. The text routes pass any
+// other model name through as well.
+export const TEXT_MODELS = [
+  "MiniMax-M3.1-Flash",
+  "MiniMax-M3",
+  "MiniMax-M2.7",
+  "MiniMax-M2.7-highspeed",
+  "MiniMax-M2.5",
+  "MiniMax-M2.5-highspeed",
+  "MiniMax-M2.1",
+  "MiniMax-M2.1-highspeed",
+  "MiniMax-M2",
+];
+
+const H3_MODEL = "MiniMax-H3";
+// What each H3 video model renders, the dearest resolution last
+// (platform.minimax.io/docs/api-reference/video-generation-v2-create).
+// H3-Lite has no adaptive ratio for reference media; only H3-Max takes extra.
+export const VIDEO_PROFILES = {
+  "MiniMax-H3": { resolutions: ["768P", "2K"], minDuration: 4 },
+  "MiniMax-H3-Highspeed": { resolutions: ["480P", "768P"], minDuration: 4 },
+  "MiniMax-H3-Lite": { resolutions: ["480P", "768P"], minDuration: 4, fixedReferenceRatio: true },
+  "MiniMax-H3-Max": { resolutions: ["480P", "768P"], minDuration: 5, extra: true },
+};
+export const VIDEO_MODELS = Object.keys(VIDEO_PROFILES);
+export const FAST_VIDEO_MODELS = VIDEO_MODELS.filter(function (model) {
+  return model !== H3_MODEL;
+});
+// A mapped upstream name the plugin does not list may render anything the
+// family renders.
+const ANY_VIDEO_PROFILE = { resolutions: ["480P", "768P", "2K"], minDuration: 4 };
+// H3-Context-IR and video regeneration run on MiniMax-H3 at MiniMax's own
+// prices; the gateway names them as MiniMax's price list does.
+export const CONTEXT_IR_MODEL = "MiniMax-H3-Context-IR";
+export const REGENERATION_MODEL = "MiniMax-H3-Regeneration";
+export const IMAGE_MODELS = ["MiniMax-H3-Image", "MiniMax-H3-Image-Highspeed"];
+// H3-Image-Context-IR serves MiniMax-H3-Image only.
+const IMAGE_PROMPT_MODEL = "MiniMax-H3-Image";
+export const MUSIC_MODELS = ["music-3.0", "music-2.6", "music-cover"];
+export const SPEECH_MODELS = ["speech-2.8-hd", "speech-2.8-turbo", "speech-2.6-hd", "speech-2.6-turbo", "speech-02-hd", "speech-02-turbo"];
+export const TRANSCRIPTION_MODELS = ["asr-1.0"];
+
+// Models served by the task part (each has a usage profile).
+export const TASK_MODELS = VIDEO_MODELS.concat([CONTEXT_IR_MODEL, REGENERATION_MODEL], IMAGE_MODELS, MUSIC_MODELS);
+// Models the vendor's /v1/models leaves out; Fetch models adds them.
+export const MEDIA_MODELS = TASK_MODELS.concat(SPEECH_MODELS, TRANSCRIPTION_MODELS);
+export const MODEL_IDS = TEXT_MODELS.concat(MEDIA_MODELS);
+
+// The models a cancel or delete request may name: those of tasks MiniMax
+// keeps on its /v2 task API.
+const CANCEL_MODELS = VIDEO_MODELS.concat([CONTEXT_IR_MODEL, REGENERATION_MODEL]);
+
+// ---------------------------------------------------------------------------
+// Usage facts (written into the manifest by scripts/gen_meta.mjs).
 
 const VIDEO_SECONDS_FIELD = {
   type: "number",
   unit: "second",
   description: { en: "Video generation unit price", zh: "视频生成单价" },
 };
-
 const RESOLUTION_DESCRIPTION = { en: "Output video resolution", zh: "输出视频分辨率" };
+const INPUT_IMAGES_FIELD = { type: "number", unit: "count", description: { en: "Input image unit price", zh: "输入图片单价" } };
+const INPUT_VIDEO_FIELD = { type: "number", unit: "second", description: { en: "Input video unit price", zh: "输入视频单价" } };
 
-// MiniMax-H3 renders 768P or 2K.
-const H3_USAGE_SCHEMA = {
+// MiniMax-H3 renders 768P or 2K. Input images are estimated at submit and
+// settled on completion; input video is reserved at the request maximum.
+export const H3_USAGE_SCHEMA = {
   seconds: VIDEO_SECONDS_FIELD,
-  resolution: {
-    enum: ["768P", "2K"],
-    description: RESOLUTION_DESCRIPTION,
-  },
-  // Input image count (estimated at submit, actual on completion).
-  input_images: {
-    type: "number",
-    unit: "count",
-    description: { en: "Input image unit price", zh: "输入图片单价" },
-  },
-  // Input video duration in seconds (reserved at the request maximum, actual on completion).
-  input_video_seconds: {
-    type: "number",
-    unit: "second",
-    description: { en: "Input video unit price", zh: "输入视频单价" },
-  },
+  resolution: { enum: ["768P", "2K"], description: RESOLUTION_DESCRIPTION },
+  input_images: INPUT_IMAGES_FIELD,
+  input_video_seconds: INPUT_VIDEO_FIELD,
 };
 
-// H3-Highspeed, H3-Lite and H3-Max render 480P or 768P; the other fields are
-// MiniMax-H3's.
-const H3_FAST_USAGE_SCHEMA = Object.assign({}, H3_USAGE_SCHEMA, {
-  resolution: {
-    enum: ["480P", "768P"],
-    description: RESOLUTION_DESCRIPTION,
-  },
+// H3-Highspeed, H3-Lite and H3-Max render 480P or 768P.
+export const H3_FAST_USAGE_SCHEMA = Object.assign({}, H3_USAGE_SCHEMA, {
+  resolution: { enum: ["480P", "768P"], description: RESOLUTION_DESCRIPTION },
 });
 
 // MiniMax bills an image request by tokens: input text (prompt enhancement
 // included), input reference images and output images, each counted for every
 // image delivered. image_count serves per-image prices instead.
-const IMAGE_USAGE_SCHEMA = {
-  image_input_text_tokens: {
-    type: "number",
-    unit: "token",
-    description: { en: "Image input text unit price", zh: "图片输入文本单价" },
-  },
-  image_input_image_tokens: {
-    type: "number",
-    unit: "token",
-    description: { en: "Image reference input unit price", zh: "图片参考图输入单价" },
-  },
-  image_output_tokens: {
-    type: "number",
-    unit: "token",
-    description: { en: "Image output unit price", zh: "图片输出单价" },
-  },
-  image_count: {
-    type: "number",
-    unit: "count",
-    description: { en: "Image generation unit price", zh: "图片生成单价" },
-  },
+export const IMAGE_USAGE_SCHEMA = {
+  image_input_text_tokens: { type: "number", unit: "token", description: { en: "Image input text unit price", zh: "图片输入文本单价" } },
+  image_input_image_tokens: { type: "number", unit: "token", description: { en: "Image reference input unit price", zh: "图片参考图输入单价" } },
+  image_output_tokens: { type: "number", unit: "token", description: { en: "Image output unit price", zh: "图片输出单价" } },
+  image_count: { type: "number", unit: "count", description: { en: "Image generation unit price", zh: "图片生成单价" } },
 };
 
-const H3_MODEL = "MiniMax-H3";
-// What each H3 video model renders, the dearest resolution last
-// (platform.minimax.io/docs/api-reference/video-generation-v2-create).
-// H3-Lite has no adaptive ratio for reference media; only H3-Max takes extra.
-const VIDEO_PROFILES = {
-  "MiniMax-H3": { resolutions: ["768P", "2K"], minDuration: 4 },
-  "MiniMax-H3-Highspeed": { resolutions: ["480P", "768P"], minDuration: 4 },
-  "MiniMax-H3-Lite": { resolutions: ["480P", "768P"], minDuration: 4, fixedReferenceRatio: true },
-  "MiniMax-H3-Max": { resolutions: ["480P", "768P"], minDuration: 5, extra: true },
+export const CONTEXT_IR_USAGE_SCHEMA = {
+  context_ir_input_tokens: { type: "number", unit: "token", description: { en: "Context-IR input unit price", zh: "Context-IR 输入单价" } },
+  context_ir_output_tokens: { type: "number", unit: "token", description: { en: "Context-IR output unit price", zh: "Context-IR 输出单价" } },
 };
-const VIDEO_MODELS = Object.keys(VIDEO_PROFILES);
-const FAST_VIDEO_MODELS = VIDEO_MODELS.filter(function (model) {
-  return model !== H3_MODEL;
-});
-// A mapped upstream name the plugin does not list may render anything the
-// family renders.
-const ANY_VIDEO_PROFILE = { resolutions: ["480P", "768P", "2K"], minDuration: 4 };
-const IMAGE_MODELS = ["MiniMax-H3-Image", "MiniMax-H3-Image-Highspeed"];
 
-// The vendor fields the OpenAI-style video requests carry in metadata; the
-// MiniMax body has them at the top level. aigc_watermark is a field of
-// MiniMax's China API (platform.minimaxi.com).
-const H3_METADATA_FIELDS = ["aigc_watermark"];
+// Regeneration renders 2K from a 768P source and bills the source task's
+// input media again.
+export const REGENERATION_USAGE_SCHEMA = {
+  seconds: VIDEO_SECONDS_FIELD,
+  input_images: INPUT_IMAGES_FIELD,
+  input_video_seconds: INPUT_VIDEO_FIELD,
+};
 
-// The /v2 and image error types by HTTP status.
-const ERROR_TYPES = { 401: "authorized_error", 402: "insufficient_balance_error", 403: "authorized_error", 422: "unprocessable_entity_error", 429: "rate_limit_error" };
+export const MUSIC_USAGE_SCHEMA = {
+  music_tracks: { type: "number", unit: "count", description: { en: "Music track unit price", zh: "音乐单曲单价" } },
+};
 
-const H3_EXAMPLE_FACTS = { seconds: 5, resolution: "768P", input_images: 0, input_video_seconds: 0 };
-const IMAGE_EXAMPLE_FACTS = { image_input_text_tokens: 0, image_input_image_tokens: 0, image_output_tokens: 0, image_count: 0 };
-
-function h3Example(label, facts) {
-  return { label: label, facts: Object.assign({}, H3_EXAMPLE_FACTS, facts) };
+function example(label, defaults, facts) {
+  return { label: label, facts: Object.assign({}, defaults, facts) };
 }
 
-function imageExample(label, facts) {
-  return { label: label, facts: Object.assign({}, IMAGE_EXAMPLE_FACTS, facts) };
-}
+const H3_FACTS = { seconds: 5, resolution: "768P", input_images: 0, input_video_seconds: 0 };
+const IMAGE_FACTS = { image_input_text_tokens: 0, image_input_image_tokens: 0, image_output_tokens: 0, image_count: 0 };
+const REGENERATION_FACTS = { seconds: 5, input_images: 0, input_video_seconds: 0 };
 
-const H3_EXAMPLES = [
-  h3Example("H3 768P 5s", {}),
-  h3Example("H3 2K 5s", { resolution: "2K" }),
-  h3Example("H3 2K 5s · 9 images", { resolution: "2K", input_images: 9 }),
-  h3Example("H3 2K 5s · input video", { resolution: "2K", input_video_seconds: 15 }),
+export const H3_EXAMPLES = [
+  example("H3 768P 5s", H3_FACTS, {}),
+  example("H3 2K 5s", H3_FACTS, { resolution: "2K" }),
+  example("H3 2K 5s · 9 images", H3_FACTS, { resolution: "2K", input_images: 9 }),
+  example("H3 2K 5s · input video", H3_FACTS, { resolution: "2K", input_video_seconds: 15 }),
 ];
-
-const H3_FAST_EXAMPLES = [
-  h3Example("480P 5s", { resolution: "480P" }),
-  h3Example("768P 5s", {}),
-  h3Example("768P 10s · 9 images", { seconds: 10, input_images: 9 }),
-  h3Example("768P 5s · input video", { input_video_seconds: 15 }),
+export const H3_FAST_EXAMPLES = [
+  example("480P 5s", H3_FACTS, { resolution: "480P" }),
+  example("768P 5s", H3_FACTS, {}),
+  example("768P 10s · 9 images", H3_FACTS, { seconds: 10, input_images: 9 }),
+  example("768P 5s · input video", H3_FACTS, { input_video_seconds: 15 }),
 ];
-
 // Token counts follow MiniMax's own examples: an output image costs one token
 // per 1024 pixels, so 2K 1:1 is 4096 tokens and 4K 1:1 is 16384.
-const IMAGE_EXAMPLES = [
-  imageExample("text to image 2K", { image_input_text_tokens: 3200, image_output_tokens: 4096, image_count: 1 }),
-  imageExample("text to image 4K", { image_input_text_tokens: 3200, image_output_tokens: 16384, image_count: 1 }),
-  imageExample("edit 2K · 2 refs", { image_input_text_tokens: 12100, image_input_image_tokens: 11800, image_output_tokens: 4096, image_count: 1 }),
+export const IMAGE_EXAMPLES = [
+  example("text to image 2K", IMAGE_FACTS, { image_input_text_tokens: 3200, image_output_tokens: 4096, image_count: 1 }),
+  example("text to image 4K", IMAGE_FACTS, { image_input_text_tokens: 3200, image_output_tokens: 16384, image_count: 1 }),
+  example("edit 2K · 2 refs", IMAGE_FACTS, { image_input_text_tokens: 12100, image_input_image_tokens: 11800, image_output_tokens: 4096, image_count: 1 }),
+  example("prompt enhancement", IMAGE_FACTS, { image_input_text_tokens: 3489 }),
 ];
+export const CONTEXT_IR_EXAMPLES = [example("text to video prompt", {}, { context_ir_input_tokens: 5664, context_ir_output_tokens: 3426 })];
+export const REGENERATION_EXAMPLES = [
+  example("2K 5s", REGENERATION_FACTS, {}),
+  example("2K 10s · 7 images", REGENERATION_FACTS, { seconds: 10, input_images: 7 }),
+  example("2K 5s · input video", REGENERATION_FACTS, { input_video_seconds: 15 }),
+];
+export const MUSIC_EXAMPLES = [example("one song", {}, { music_tracks: 1 })];
 
-// The marketplace reads meta without running the plugin, so it is a plain
-// literal. MiniMax request and response bodies answer at MiniMax's own paths
-// and under /<key>; the image paths are the host's OpenAI image endpoints, so
-// their MiniMax bodies answer under /<key> only, which a downstream New API
-// gateway calls. The image API answers synchronously and has no task to re-query.
+// The marketplace and the gateway read this manifest without running the plugin,
+// so it is a plain literal (scripts/gen_meta.mjs writes it from the constants above).
 export const meta = {
   "apiVersion": 1,
   "key": "byaiden_minimax",
-  "name": "MiniMax H3",
+  "name": "MiniMax",
   "icon": "Minimax.Color",
   "description": {
-    "en": "MiniMax-H3, H3-Highspeed, H3-Lite and H3-Max video generation (text, frames, and multimodal reference) and MiniMax-H3-Image generation and editing",
-    "zh": "MiniMax-H3、H3-Highspeed、H3-Lite、H3-Max 视频生成（文生视频、首尾帧、多模态参考）与 MiniMax-H3-Image 图片生成和编辑"
+    "en": "MiniMax text, speech, transcription, H3 video, H3-Image and music on one channel",
+    "zh": "一个渠道接入 MiniMax 文本、语音合成、语音识别、H3 视频、H3-Image 图片与音乐"
   },
-  "version": "1.2.3",
+  "version": "2.0.0",
   "author": {
     "name": "ByAiden",
     "url": "https://github.com/ByAiden"
   },
-  "website": "https://platform.minimax.io/docs/guides/image-generation",
+  "website": "https://platform.minimax.io/docs/api-reference/api-overview",
   "baseUrl": "https://api.minimaxi.com",
   "models": [
+    "MiniMax-M3.1-Flash",
+    "MiniMax-M3",
+    "MiniMax-M2.7",
+    "MiniMax-M2.7-highspeed",
+    "MiniMax-M2.5",
+    "MiniMax-M2.5-highspeed",
+    "MiniMax-M2.1",
+    "MiniMax-M2.1-highspeed",
+    "MiniMax-M2",
     "MiniMax-H3",
     "MiniMax-H3-Highspeed",
     "MiniMax-H3-Lite",
     "MiniMax-H3-Max",
+    "MiniMax-H3-Context-IR",
+    "MiniMax-H3-Regeneration",
     "MiniMax-H3-Image",
-    "MiniMax-H3-Image-Highspeed"
+    "MiniMax-H3-Image-Highspeed",
+    "music-3.0",
+    "music-2.6",
+    "music-cover",
+    "speech-2.8-hd",
+    "speech-2.8-turbo",
+    "speech-2.6-hd",
+    "speech-2.6-turbo",
+    "speech-02-hd",
+    "speech-02-turbo",
+    "asr-1.0"
   ],
   "fetchMode": "per_task",
   "upstreams": [
@@ -227,6 +270,30 @@ export const meta = {
         "en": "Image generation unit price",
         "zh": "图片生成单价"
       }
+    },
+    "context_ir_input_tokens": {
+      "type": "number",
+      "unit": "token",
+      "description": {
+        "en": "Context-IR input unit price",
+        "zh": "Context-IR 输入单价"
+      }
+    },
+    "context_ir_output_tokens": {
+      "type": "number",
+      "unit": "token",
+      "description": {
+        "en": "Context-IR output unit price",
+        "zh": "Context-IR 输出单价"
+      }
+    },
+    "music_tracks": {
+      "type": "number",
+      "unit": "count",
+      "description": {
+        "en": "Music track unit price",
+        "zh": "音乐单曲单价"
+      }
     }
   },
   "usageExamples": [
@@ -240,7 +307,10 @@ export const meta = {
         "image_input_text_tokens": 0,
         "image_input_image_tokens": 0,
         "image_output_tokens": 0,
-        "image_count": 0
+        "image_count": 0,
+        "context_ir_input_tokens": 0,
+        "context_ir_output_tokens": 0,
+        "music_tracks": 0
       }
     },
     {
@@ -253,7 +323,42 @@ export const meta = {
         "image_input_text_tokens": 3200,
         "image_input_image_tokens": 0,
         "image_output_tokens": 16384,
-        "image_count": 1
+        "image_count": 1,
+        "context_ir_input_tokens": 0,
+        "context_ir_output_tokens": 0,
+        "music_tracks": 0
+      }
+    },
+    {
+      "label": "Context-IR",
+      "facts": {
+        "seconds": 0,
+        "resolution": "768P",
+        "input_images": 0,
+        "input_video_seconds": 0,
+        "image_input_text_tokens": 0,
+        "image_input_image_tokens": 0,
+        "image_output_tokens": 0,
+        "image_count": 0,
+        "context_ir_input_tokens": 5664,
+        "context_ir_output_tokens": 3426,
+        "music_tracks": 0
+      }
+    },
+    {
+      "label": "one song",
+      "facts": {
+        "seconds": 0,
+        "resolution": "768P",
+        "input_images": 0,
+        "input_video_seconds": 0,
+        "image_input_text_tokens": 0,
+        "image_input_image_tokens": 0,
+        "image_output_tokens": 0,
+        "image_count": 0,
+        "context_ir_input_tokens": 0,
+        "context_ir_output_tokens": 0,
+        "music_tracks": 1
       }
     }
   ],
@@ -420,6 +525,95 @@ export const meta = {
     },
     {
       "models": [
+        "MiniMax-H3-Context-IR"
+      ],
+      "schema": {
+        "context_ir_input_tokens": {
+          "type": "number",
+          "unit": "token",
+          "description": {
+            "en": "Context-IR input unit price",
+            "zh": "Context-IR 输入单价"
+          }
+        },
+        "context_ir_output_tokens": {
+          "type": "number",
+          "unit": "token",
+          "description": {
+            "en": "Context-IR output unit price",
+            "zh": "Context-IR 输出单价"
+          }
+        }
+      },
+      "examples": [
+        {
+          "label": "text to video prompt",
+          "facts": {
+            "context_ir_input_tokens": 5664,
+            "context_ir_output_tokens": 3426
+          }
+        }
+      ]
+    },
+    {
+      "models": [
+        "MiniMax-H3-Regeneration"
+      ],
+      "schema": {
+        "seconds": {
+          "type": "number",
+          "unit": "second",
+          "description": {
+            "en": "Video generation unit price",
+            "zh": "视频生成单价"
+          }
+        },
+        "input_images": {
+          "type": "number",
+          "unit": "count",
+          "description": {
+            "en": "Input image unit price",
+            "zh": "输入图片单价"
+          }
+        },
+        "input_video_seconds": {
+          "type": "number",
+          "unit": "second",
+          "description": {
+            "en": "Input video unit price",
+            "zh": "输入视频单价"
+          }
+        }
+      },
+      "examples": [
+        {
+          "label": "2K 5s",
+          "facts": {
+            "seconds": 5,
+            "input_images": 0,
+            "input_video_seconds": 0
+          }
+        },
+        {
+          "label": "2K 10s · 7 images",
+          "facts": {
+            "seconds": 10,
+            "input_images": 7,
+            "input_video_seconds": 0
+          }
+        },
+        {
+          "label": "2K 5s · input video",
+          "facts": {
+            "seconds": 5,
+            "input_images": 0,
+            "input_video_seconds": 15
+          }
+        }
+      ]
+    },
+    {
+      "models": [
         "MiniMax-H3-Image",
         "MiniMax-H3-Image-Highspeed"
       ],
@@ -484,6 +678,40 @@ export const meta = {
             "image_output_tokens": 4096,
             "image_count": 1
           }
+        },
+        {
+          "label": "prompt enhancement",
+          "facts": {
+            "image_input_text_tokens": 3489,
+            "image_input_image_tokens": 0,
+            "image_output_tokens": 0,
+            "image_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "models": [
+        "music-3.0",
+        "music-2.6",
+        "music-cover"
+      ],
+      "schema": {
+        "music_tracks": {
+          "type": "number",
+          "unit": "count",
+          "description": {
+            "en": "Music track unit price",
+            "zh": "音乐单曲单价"
+          }
+        }
+      },
+      "examples": [
+        {
+          "label": "one song",
+          "facts": {
+            "music_tracks": 1
+          }
         }
       ]
     }
@@ -509,6 +737,28 @@ export const meta = {
       "render": "h3TaskStatus"
     },
     {
+      "method": "DELETE",
+      "path": "/v2/video_generation/:task_id",
+      "type": "submit",
+      "decode": "cancelTask",
+      "render": "taskCancelled",
+      "retainResult": false
+    },
+    {
+      "method": "POST",
+      "path": "/v2/h3_context_ir",
+      "type": "submit",
+      "decode": "createContextIR",
+      "render": "taskCreated"
+    },
+    {
+      "method": "POST",
+      "path": "/v2/video_regeneration",
+      "type": "submit",
+      "decode": "createRegeneration",
+      "render": "taskCreated"
+    },
+    {
       "method": "POST",
       "path": "/v1/images/generations",
       "type": "submit",
@@ -529,6 +779,30 @@ export const meta = {
       "models": [
         "MiniMax-H3-Image",
         "MiniMax-H3-Image-Highspeed"
+      ],
+      "retainResult": false
+    },
+    {
+      "method": "POST",
+      "path": "/v1/h3_image_context_ir",
+      "type": "submit",
+      "decode": "enhanceImagePrompt",
+      "render": "imagePromptEnhanced",
+      "models": [
+        "MiniMax-H3-Image"
+      ],
+      "retainResult": false
+    },
+    {
+      "method": "POST",
+      "path": "/v1/music_generation",
+      "type": "submit",
+      "decode": "createMusic",
+      "render": "musicCreated",
+      "models": [
+        "music-3.0",
+        "music-2.6",
+        "music-cover"
       ],
       "retainResult": false
     }
@@ -564,11 +838,60 @@ export const meta = {
         "MiniMax-H3-Image-Highspeed"
       ]
     }
-  ]
+  ],
+  "relay": [
+    {
+      "incoming_path": "/v1/chat/completions",
+      "upstream_path": "/v1/chat/completions"
+    },
+    {
+      "incoming_path": "/v1/responses",
+      "upstream_path": "/v1/responses"
+    },
+    {
+      "incoming_path": "/v1/messages",
+      "upstream_path": "/anthropic/v1/messages"
+    },
+    {
+      "incoming_path": "/v1/audio/speech",
+      "upstream_path": "/v1/t2a_v2",
+      "converter": "plugin"
+    },
+    {
+      "incoming_path": "/v1/audio/transcriptions",
+      "upstream_path": "/v1/speech_to_text",
+      "converter": "plugin"
+    },
+    {
+      "incoming_path": "/v1/models",
+      "upstream_path": "/v1/models",
+      "converter": "plugin"
+    }
+  ],
+  "channelConfig": {
+    "type": "object",
+    "properties": {
+      "defaultVoice": {
+        "type": "string",
+        "title": {
+          "en": "Default voice",
+          "zh": "默认音色"
+        },
+        "description": {
+          "en": "MiniMax voice ID used when a speech request names an OpenAI voice such as alloy, or none",
+          "zh": "语音合成请求使用 alloy 等 OpenAI 音色名或未指定音色时使用的 MiniMax 音色 ID"
+        },
+        "default": "English_Graceful_Lady",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    }
+  },
+  "keyHint": {
+    "en": "MiniMax API key of the site the Base URL points to",
+    "zh": "MiniMax API Key，与 Base URL 所在站点对应"
+  }
 };
-
-// The gateway reads the manifest statically, so the code below uses these copies of its values.
-const PLUGIN_KEY = "byaiden_minimax";
 
 function trimmed(value) {
   return String(value === undefined || value === null ? "" : value).trim();
@@ -1172,7 +1495,7 @@ function nativeImageIntent(ctx, operation) {
   return imageIntent(model, operation, imageBody);
 }
 
-export const native = {
+const mediaNative = {
   // MiniMax-H3's own body, sent as is for MiniMax to check.
   createH3Task: function (ctx) {
     const body = jsonBody(ctx);
@@ -1220,7 +1543,7 @@ export const native = {
   },
 };
 
-export function buildSubmitRequest(ctx) {
+function mediaSubmitRequest(ctx) {
   const req = ctx.requestBody || {};
   const model = ctx.upstreamModel;
   if (imageTask(ctx)) {
@@ -1258,7 +1581,7 @@ export function buildSubmitRequest(ctx) {
   };
 }
 
-export function parseSubmitResponse(ctx, resp) {
+function mediaSubmitResponse(ctx, resp) {
   const body = resp.body || {};
   if (imageTask(ctx)) {
     if (!plainObject(body)) throw new Error("invalid image generation response");
@@ -1281,7 +1604,7 @@ export function parseSubmitResponse(ctx, resp) {
   return { taskId: body.task_id, taskData: body };
 }
 
-export function extractUsage(ctx) {
+function mediaUsage(ctx) {
   const req = ctx.requestBody || {};
   if (imageTask(ctx)) {
     const facts = checkImageBody(imageOperation(req), req.imageBody || {}).facts;
@@ -1311,7 +1634,7 @@ export function extractUsage(ctx) {
 
 // Only legacy per-call pricing calls this hook: an image request settles on
 // the images MiniMax delivered.
-export function extractUsageOnSubmit(ctx, body) {
+function mediaUsageOnSubmit(ctx, body) {
   if (!imageTask(ctx)) return null;
   return { image_count: imageUsage(body).image_count };
 }
@@ -1363,14 +1686,8 @@ export function listArtifacts(task) {
   return h3ArtifactURL(task) ? [{ key: "video", type: "video", mimeType: "video/mp4" }] : [];
 }
 
-export function buildContentRequest(ctx) {
-  if (ctx.artifactKey !== "video") throw new Error("artifact_not_found");
-  const url = h3ArtifactURL(ctx);
-  if (!url) throw new Error("artifact_not_found");
-  return { url: url, method: ctx.clientRequest.method, credentialless: true };
-}
 
-export function extractUsageOnComplete(task, taskResult, body) {
+function mediaUsageOnComplete(task, taskResult, body) {
   if (imageTask(task)) return imageUsage(body);
   const h3Task = h3QueryTask(body);
   if (!h3Task) return null;
@@ -1557,3 +1874,809 @@ protocols.openai_video = {
     return output;
   },
 };
+
+// ---------------------------------------------------------------------------
+// Shared helpers of the newer endpoints
+
+// The vendor fields the OpenAI-style video requests carry in metadata; the
+// MiniMax body has them at the top level. aigc_watermark is a field of
+// MiniMax's China API (platform.minimaxi.com).
+const H3_METADATA_FIELDS = ["aigc_watermark"];
+
+// The /v2 and image error types by HTTP status.
+const ERROR_TYPES = { 401: "authorized_error", 402: "insufficient_balance_error", 403: "authorized_error", 422: "unprocessable_entity_error", 429: "rate_limit_error" };
+
+function fail(message) {
+  throw new Error(message);
+}
+
+function own(object, key) {
+  return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+function onlyFields(body, allowed) {
+  for (const key of Object.keys(body)) {
+    if (!allowed.includes(key)) fail(key + " is not supported");
+  }
+}
+
+function boundedNumber(value, maximum) {
+  if (!present(value) || value === "") return undefined;
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0 || number > maximum) return undefined;
+  return number;
+}
+
+// The kind of task a request or a persisted task is: the decoders mark the
+// newer kinds, and polling contexts carry the action.
+const ACTION_KINDS = {
+  cancel_task: "cancel",
+  h3_context_ir: "context_ir",
+  video_regeneration: "regeneration",
+  image_prompt: "image_prompt",
+  music_generation: "music",
+};
+
+function taskKind(ctx) {
+  const req = plainObject(ctx && ctx.requestBody);
+  if (req && typeof req.kind === "string" && req.kind) return req.kind;
+  const kind = ACTION_KINDS[trimmed(ctx && ctx.action)];
+  if (kind) return kind;
+  return "media";
+}
+
+function bearer(ctx) {
+  return viaGateway(ctx) ? ctx.authHeader || "Bearer " + ctx.apiKey : "Bearer " + ctx.apiKey;
+}
+
+function jsonHeaders(ctx) {
+  return { "Content-Type": "application/json", Accept: "application/json", Authorization: bearer(ctx) };
+}
+
+// MiniMax answers some calls with HTTP 200 and base_resp.status_code set.
+function baseRespError(body) {
+  const base = plainObject(plainObject(body) ? body.base_resp : null);
+  if (!base || !present(base.status_code) || Number(base.status_code) === 0) return "";
+  return (trimmed(base.status_msg) || "MiniMax request failed") + " (" + base.status_code + ")";
+}
+
+// An upstream name for MiniMax's H3 task endpoints: the gateway's Context-IR
+// and regeneration names stand for MiniMax-H3 there.
+function h3UpstreamModel(ctx, gatewayName) {
+  const model = trimmed(ctx.upstreamModel) || trimmed(ctx.model);
+  if (!model || model === gatewayName) return H3_MODEL;
+  return model;
+}
+
+function originTask(ctx, publicId) {
+  const tasks = Array.isArray(ctx.originTasks) ? ctx.originTasks : [];
+  const wanted = trimmed(publicId);
+  return tasks.find(function (task) {
+    return task && trimmed(task.taskId) === wanted;
+  }) || tasks[0] || null;
+}
+
+// The MiniMax task object stored for a gateway task, the plain query reply or
+// a New API gateway's presenter output.
+function storedH3Task(data) {
+  return h3QueryTask(artifactData({ data: data }));
+}
+
+// ---------------------------------------------------------------------------
+// H3-Context-IR: an enhanced video prompt, as a /v2 task
+
+const CONTEXT_IR_FIELDS = ["model", "content", "duration", "ratio", "callback_url"];
+// MiniMax's example spends 5,664 input and 3,426 output tokens on a short
+// text-to-video prompt; media items add their own context.
+const CONTEXT_IR_INPUT_BASE = 16384;
+const CONTEXT_IR_INPUT_PER_MEDIA = 16384;
+const CONTEXT_IR_OUTPUT_RESERVE = 16384;
+const CONTEXT_IR_MAX_TOKENS = 2000000;
+
+function contextIRBody(body) {
+  onlyFields(body, CONTEXT_IR_FIELDS);
+  refuseCallback(body);
+  if (!Array.isArray(body.content)) fail("content must be an array");
+  const content = validateH3Content(body.content);
+  if (!present(body.duration)) fail("duration is required (4 to 15 seconds)");
+  h3Duration(body.duration, videoProfile(H3_MODEL));
+  if (present(body.ratio) && typeof body.ratio !== "string") fail("ratio must be a string");
+  const out = Object.assign({}, body);
+  delete out.model;
+  if (!trimmed(out.ratio) && h3TextOnly(content)) out.ratio = "16:9";
+  return out;
+}
+
+function contextIRFacts(body) {
+  const content = Array.isArray(body.content) ? body.content : [];
+  let input = CONTEXT_IR_INPUT_BASE;
+  for (const item of content) {
+    if (!plainObject(item)) continue;
+    if (item.type === "text") input += codePoints(trimmed(item.text));
+    else input += CONTEXT_IR_INPUT_PER_MEDIA;
+  }
+  return { context_ir_input_tokens: input, context_ir_output_tokens: CONTEXT_IR_OUTPUT_RESERVE };
+}
+
+function contextIRUsage(task) {
+  const usage = plainObject(task && task.usage) || {};
+  const facts = {};
+  const input = boundedNumber(usage.prompt_tokens, CONTEXT_IR_MAX_TOKENS);
+  const output = boundedNumber(usage.completion_tokens, CONTEXT_IR_MAX_TOKENS);
+  if (input !== undefined) facts.context_ir_input_tokens = Math.round(input);
+  if (output !== undefined) facts.context_ir_output_tokens = Math.round(output);
+  return Object.keys(facts).length ? facts : null;
+}
+
+// ---------------------------------------------------------------------------
+// Video regeneration: a 768P MiniMax-H3 video again at 2K
+
+const REGENERATION_FIELDS = ["model", "source_task_id", "content", "resolution", "generate_audio", "aigc_watermark", "callback_url"];
+const REGENERATION_MAX_SECONDS = 15;
+
+function regenerationBody(body) {
+  onlyFields(body, REGENERATION_FIELDS);
+  refuseCallback(body);
+  const bySource = present(body.source_task_id);
+  if (bySource === present(body.content)) fail("send either source_task_id or content");
+  if (present(body.resolution) && body.resolution !== "2K") fail("resolution must be 2K");
+  for (const key of ["generate_audio", "aigc_watermark"]) {
+    if (present(body[key]) && typeof body[key] !== "boolean") fail(key + " must be true or false");
+  }
+  const out = Object.assign({}, body, { resolution: "2K" });
+  delete out.model;
+  if (bySource) {
+    if (typeof body.source_task_id !== "string" || !body.source_task_id.trim()) fail("source_task_id must be a task id of this gateway");
+    delete out.source_task_id;
+    return { body: out, sourceTaskId: body.source_task_id.trim() };
+  }
+  if (!Array.isArray(body.content)) fail("content must be an array");
+  const bases = body.content.filter(function (item) {
+    return plainObject(item) && item.type === "video_url" && trimmed(item.role) === "base_video";
+  });
+  if (bases.length !== 1) fail("content must hold exactly one video_url item with role base_video");
+  validateH3Content(
+    body.content.filter(function (item) {
+      return !(plainObject(item) && trimmed(item.role) === "base_video");
+    }),
+  );
+  return { body: out, sourceTaskId: "" };
+}
+
+// The source task's own output and inputs are billed again; without them the
+// reservation holds the longest video MiniMax regenerates.
+function regenerationFacts(ctx) {
+  const req = ctx.requestBody || {};
+  const facts = { seconds: REGENERATION_MAX_SECONDS, input_images: 0, input_video_seconds: 0 };
+  if (req.sourceTaskId) {
+    const origin = originTask(ctx, req.sourceTaskId);
+    const source = origin ? storedH3Task(origin.data) : null;
+    const usage = plainObject(source && source.usage) || {};
+    const seconds = boundedNumber(usage.output_seconds, REGENERATION_MAX_SECONDS) || boundedNumber(source && source.duration, REGENERATION_MAX_SECONDS);
+    if (seconds) facts.seconds = seconds;
+    facts.input_images = boundedNumber(usage.input_image_count, H3_MAX_REFERENCE_IMAGES) || 0;
+    const inputSeconds = boundedNumber(usage.input_seconds, H3_MAX_INPUT_VIDEO_SECONDS);
+    facts.input_video_seconds = inputSeconds === undefined ? (source ? 0 : H3_MAX_INPUT_VIDEO_SECONDS) : inputSeconds;
+    return facts;
+  }
+  const content = Array.isArray(plainObject(req.vendorBody) && req.vendorBody.content) ? req.vendorBody.content : [];
+  for (const item of content) {
+    if (!plainObject(item)) continue;
+    if (item.type === "image_url") facts.input_images += 1;
+    if (item.type === "video_url" && trimmed(item.role) !== "base_video") facts.input_video_seconds = H3_MAX_INPUT_VIDEO_SECONDS;
+  }
+  return facts;
+}
+
+function regenerationUsage(task) {
+  const usage = plainObject(task && task.usage) || {};
+  const facts = {};
+  const seconds = boundedNumber(usage.output_seconds, REGENERATION_MAX_SECONDS);
+  const images = boundedNumber(usage.input_image_count, H3_MAX_REFERENCE_IMAGES);
+  const input = boundedNumber(usage.input_seconds, H3_MAX_INPUT_VIDEO_SECONDS);
+  if (seconds !== undefined) facts.seconds = seconds;
+  if (images !== undefined && Number.isInteger(images)) facts.input_images = images;
+  if (input !== undefined) facts.input_video_seconds = input;
+  return Object.keys(facts).length ? facts : null;
+}
+
+// ---------------------------------------------------------------------------
+// Cancel or delete a /v2 task: a zero-priced request on the task's channel
+
+// The facts of a request that costs nothing, complete for the model's profile.
+function zeroFacts(model) {
+  if (model === CONTEXT_IR_MODEL) return { context_ir_input_tokens: 0, context_ir_output_tokens: 0 };
+  if (model === REGENERATION_MODEL) return { seconds: 0, input_images: 0, input_video_seconds: 0 };
+  return { seconds: 0, resolution: videoProfile(model).resolutions[0], input_images: 0, input_video_seconds: 0 };
+}
+
+function cancelModel(name) {
+  const model = trimmed(name);
+  if (!model) return H3_MODEL;
+  return model;
+}
+
+// ---------------------------------------------------------------------------
+// H3-Image-Context-IR: MiniMax-H3-Image prompt enhancement on its own
+
+const IMAGE_PROMPT_FIELDS = ["model", "prompt", "images", "size", "aspect_ratio", "area"];
+const IMAGE_PROMPT_MAX_TOKENS = 2000000;
+
+function imagePromptBody(body) {
+  onlyFields(body, IMAGE_PROMPT_FIELDS);
+  const prompt = stringField(body, "prompt");
+  if (!prompt) fail("prompt is required");
+  if (codePoints(prompt) > IMAGE_MAX_PROMPT_CHARS) fail("prompt must be at most " + IMAGE_MAX_PROMPT_CHARS + " characters");
+  imagePixels(body);
+  let references = 0;
+  if (present(body.images)) {
+    if (!Array.isArray(body.images) || !body.images.length || body.images.length > IMAGE_MAX_REFERENCES) fail("images must hold 1 to " + IMAGE_MAX_REFERENCES + " reference images");
+    body.images.forEach(referenceImage);
+    references = body.images.length;
+  }
+  const out = Object.assign({}, body);
+  delete out.model;
+  const textTokens = codePoints(prompt) + (references ? IMAGE_TEXT_TOKENS_PER_REFERENCE * references : IMAGE_TEXT_TOKENS_GENERATE);
+  return { body: out, facts: { image_input_text_tokens: textTokens, image_input_image_tokens: 0, image_output_tokens: 0, image_count: 0 } };
+}
+
+function imagePromptUsage(body) {
+  const usage = plainObject(plainObject(body) ? body.usage : null) || {};
+  const tokens = boundedNumber(usage.input_tokens !== undefined ? usage.input_tokens : usage.total_tokens, IMAGE_PROMPT_MAX_TOKENS);
+  if (tokens === undefined) return null;
+  return { image_input_text_tokens: Math.round(tokens), image_input_image_tokens: 0, image_output_tokens: 0, image_count: 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Music generation (synchronous; MiniMax answers with hex audio or a URL)
+
+const MUSIC_FIELDS = ["model", "prompt", "lyrics", "stream", "output_format", "audio_setting", "lyrics_optimizer", "is_instrumental", "audio_url", "audio_base64", "cover_feature_id"];
+const MUSIC_MAX_PROMPT = 2000;
+const MUSIC_MAX_LYRICS = 3500;
+
+function musicBody(model, body) {
+  onlyFields(body, MUSIC_FIELDS);
+  if (present(body.stream) && body.stream !== false) fail("stream is not supported; the gateway answers once the song is done");
+  for (const key of ["prompt", "lyrics", "audio_url", "audio_base64", "cover_feature_id"]) {
+    if (present(body[key]) && typeof body[key] !== "string") fail(key + " must be a string");
+  }
+  for (const key of ["lyrics_optimizer", "is_instrumental"]) {
+    if (present(body[key]) && typeof body[key] !== "boolean") fail(key + " must be true or false");
+  }
+  if (present(body.output_format) && body.output_format !== "url" && body.output_format !== "hex") fail("output_format must be url or hex");
+  if (present(body.audio_setting) && !plainObject(body.audio_setting)) fail("audio_setting must be an object");
+  const prompt = trimmed(body.prompt);
+  const lyrics = trimmed(body.lyrics);
+  if (codePoints(prompt) > MUSIC_MAX_PROMPT) fail("prompt must be at most " + MUSIC_MAX_PROMPT + " characters");
+  if (codePoints(lyrics) > MUSIC_MAX_LYRICS) fail("lyrics must be at most " + MUSIC_MAX_LYRICS + " characters");
+  const cover = /cover/.test(model);
+  const sources = ["audio_url", "audio_base64", "cover_feature_id"].filter(function (key) {
+    return trimmed(body[key]);
+  });
+  if (cover) {
+    if (!prompt) fail("prompt is required for a cover");
+    if (sources.length !== 1) fail("a cover needs exactly one of audio_url, audio_base64 or cover_feature_id");
+  } else {
+    if (sources.length) fail(sources[0] + " is only valid on music-cover");
+    if (body.is_instrumental === true && !prompt) fail("prompt is required for instrumental music");
+    if (body.is_instrumental !== true && !lyrics && body.lyrics_optimizer !== true) fail("lyrics are required (or set lyrics_optimizer or is_instrumental)");
+  }
+  const out = Object.assign({}, body);
+  delete out.model;
+  return out;
+}
+
+function musicAudio(body) {
+  const data = plainObject(plainObject(body) ? body.data : null);
+  return data ? trimmed(data.audio) : "";
+}
+
+// ---------------------------------------------------------------------------
+// Native routes
+
+export const native = Object.assign({}, mediaNative, {
+  // DELETE /v2/video_generation/{task_id}: cancels a queued task or deletes a
+  // finished task's record at MiniMax. The path holds the gateway task id.
+  cancelTask: function (ctx) {
+    const params = ctx.params || {};
+    const taskId = trimmed(params.task_id);
+    if (!taskId) fail("task_id is required");
+    let body = {};
+    if (ctx.body && ctx.body.kind === "json") {
+      body = plainObject(ctx.body.value);
+      if (!body) fail("request body must be an object");
+    }
+    onlyFields(body, ["model"]);
+    if (present(body.model) && typeof body.model !== "string") fail("model must be a string");
+    // The model only picks the price profile (every fact is zero); a model
+    // the plugin does not list may be a channel alias of one it does.
+    const model = cancelModel(body.model);
+    if (TASK_MODELS.indexOf(model) >= 0 && CANCEL_MODELS.indexOf(model) < 0) fail(model + " has no task to cancel; name the model of the video task");
+    return { kind: "submit", model: model, action: "cancel_task", originTaskIds: [taskId], requestBody: { kind: "cancel", model: model, taskId: taskId } };
+  },
+  // POST /v2/h3_context_ir: MiniMax's body; model MiniMax-H3 or the gateway's
+  // MiniMax-H3-Context-IR.
+  createContextIR: function (ctx) {
+    const body = jsonBody(ctx);
+    const name = body.model.trim();
+    const model = name === H3_MODEL ? CONTEXT_IR_MODEL : name;
+    return { kind: "submit", model: model, action: "h3_context_ir", requestBody: { kind: "context_ir", model: model, vendorBody: contextIRBody(body) } };
+  },
+  // POST /v2/video_regeneration: by a gateway task id (source_task_id) or by
+  // the source video and its inputs (content).
+  createRegeneration: function (ctx) {
+    const body = jsonBody(ctx);
+    const name = body.model.trim();
+    const model = name === H3_MODEL ? REGENERATION_MODEL : name;
+    const checked = regenerationBody(body);
+    const intent = { kind: "submit", model: model, action: "video_regeneration", requestBody: { kind: "regeneration", model: model, vendorBody: checked.body, sourceTaskId: checked.sourceTaskId } };
+    if (checked.sourceTaskId) intent.originTaskIds = [checked.sourceTaskId];
+    return intent;
+  },
+  // POST /v1/h3_image_context_ir
+  enhanceImagePrompt: function (ctx) {
+    const body = jsonBody(ctx);
+    const model = body.model.trim();
+    if (model === "MiniMax-H3-Image-Highspeed") fail("H3-Image-Context-IR serves MiniMax-H3-Image only");
+    const checked = imagePromptBody(body);
+    return { kind: "submit", model: model, action: "image_prompt", requestBody: { kind: "image_prompt", model: model, promptBody: checked.body } };
+  },
+  // POST /v1/music_generation
+  createMusic: function (ctx) {
+    const body = jsonBody(ctx);
+    const model = body.model.trim();
+    return { kind: "submit", model: model, action: "music_generation", requestBody: { kind: "music", model: model, musicBody: musicBody(model, body) } };
+  },
+  // MiniMax's cancel reply, for the task the request named.
+  taskCancelled: function (ctx, task) {
+    const data = plainObject(task.data) || {};
+    return { task_id: data.task_id, action: data.action, status: data.status };
+  },
+  // MiniMax's own replies, unchanged.
+  imagePromptEnhanced: function (ctx, task) {
+    return plainObject(task.data) || {};
+  },
+  musicCreated: function (ctx, task) {
+    return plainObject(task.data) || {};
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Driver hooks
+
+export function buildSubmitRequest(ctx) {
+  const req = ctx.requestBody || {};
+  const kind = taskKind(ctx);
+  if (kind === "cancel") {
+    const origin = originTask(ctx, req.taskId);
+    if (!origin || !trimmed(origin.upstreamTaskId)) fail("the task to cancel was not found");
+    const request = {
+      url: apiRoot(ctx) + "/v2/video_generation/" + encodeURIComponent(trimmed(origin.upstreamTaskId)),
+      method: "DELETE",
+      headers: { Accept: "application/json", Authorization: bearer(ctx) },
+      action: "cancel_task",
+    };
+    // The other gateway's route reads the model from a JSON body.
+    if (viaGateway(ctx)) {
+      request.headers["Content-Type"] = "application/json";
+      request.body = { model: trimmed(ctx.upstreamModel) || trimmed(ctx.model) || H3_MODEL };
+    }
+    return request;
+  }
+  if (kind === "context_ir") {
+    const gateway = viaGateway(ctx);
+    const body = Object.assign({}, contextIRBody(Object.assign({}, req.vendorBody)), { model: gateway ? trimmed(ctx.upstreamModel) || CONTEXT_IR_MODEL : h3UpstreamModel(ctx, CONTEXT_IR_MODEL) });
+    return { url: apiRoot(ctx) + "/v2/h3_context_ir", method: "POST", headers: jsonHeaders(ctx), body: body, action: "h3_context_ir" };
+  }
+  if (kind === "regeneration") {
+    const gateway = viaGateway(ctx);
+    const body = Object.assign({}, req.vendorBody, { model: gateway ? trimmed(ctx.upstreamModel) || REGENERATION_MODEL : h3UpstreamModel(ctx, REGENERATION_MODEL) });
+    if (req.sourceTaskId) {
+      const origin = originTask(ctx, req.sourceTaskId);
+      if (!origin || !trimmed(origin.upstreamTaskId)) fail("the source task was not found");
+      body.source_task_id = trimmed(origin.upstreamTaskId);
+    }
+    return { url: apiRoot(ctx) + "/v2/video_regeneration", method: "POST", headers: jsonHeaders(ctx), body: body, action: "video_regeneration" };
+  }
+  if (kind === "image_prompt") {
+    const checked = imagePromptBody(Object.assign({}, req.promptBody));
+    const body = Object.assign({}, checked.body, { model: trimmed(ctx.upstreamModel) || IMAGE_PROMPT_MODEL });
+    return { url: apiRoot(ctx) + "/v1/h3_image_context_ir", method: "POST", headers: jsonHeaders(ctx), body: body, action: "image_prompt" };
+  }
+  if (kind === "music") {
+    const body = Object.assign({}, musicBody(trimmed(req.model) || trimmed(ctx.upstreamModel), Object.assign({}, req.musicBody)), { model: trimmed(ctx.upstreamModel) || trimmed(ctx.model) });
+    return { url: apiRoot(ctx) + "/v1/music_generation", method: "POST", headers: jsonHeaders(ctx), body: body, action: "music_generation" };
+  }
+  return mediaSubmitRequest(ctx);
+}
+
+function immediate(ctx, body, url) {
+  const taskId = trimmed(ctx.publicTaskId);
+  if (!taskId) fail("missing gateway task id");
+  const done = { status: "SUCCESS", progress: "100%" };
+  if (url) done.url = url;
+  return { taskId: taskId, taskData: body, immediate: done };
+}
+
+export function parseSubmitResponse(ctx, resp) {
+  const body = resp.body || {};
+  const kind = taskKind(ctx);
+  if (kind === "cancel") {
+    const req = ctx.requestBody || {};
+    const result = trimmed(body.action) || trimmed(body.status);
+    if (result !== "cancelled" && result !== "deleted") fail(baseRespError(body) || "MiniMax did not cancel or delete the task");
+    return immediate(ctx, { task_id: trimmed(req.taskId), action: result, status: trimmed(body.status) || result });
+  }
+  if (kind === "image_prompt") {
+    if (!plainObject(body)) fail("invalid prompt enhancement response");
+    if (!trimmed(body.revised_prompt)) fail(baseRespError(body) || trimmed(plainObject(body.error) && body.error.message) || "MiniMax returned no enhanced prompt");
+    return immediate(ctx, body, "");
+  }
+  if (kind === "music") {
+    if (!plainObject(body)) fail("invalid music generation response");
+    const error = baseRespError(body);
+    if (error) fail(error);
+    const audio = musicAudio(body);
+    if (!audio) fail("MiniMax returned no audio");
+    return immediate(ctx, body, /^https?:\/\//i.test(audio) ? audio : "");
+  }
+  return mediaSubmitResponse(ctx, resp);
+}
+
+export function extractUsage(ctx) {
+  const req = ctx.requestBody || {};
+  const kind = taskKind(ctx);
+  if (kind === "cancel") {
+    if (ctx.usagePurpose === "billing_ratios") return { seconds: 0 };
+    return zeroFacts(trimmed(ctx.upstreamModel) || trimmed(ctx.model) || trimmed(req.model));
+  }
+  if (kind === "context_ir") {
+    if (ctx.usagePurpose === "billing_ratios") return null;
+    return contextIRFacts(req.vendorBody || {});
+  }
+  if (kind === "regeneration") {
+    if (ctx.usagePurpose === "billing_ratios") return null;
+    return regenerationFacts(ctx);
+  }
+  if (kind === "image_prompt") {
+    if (ctx.usagePurpose === "billing_ratios") return null;
+    return imagePromptBody(Object.assign({}, req.promptBody)).facts;
+  }
+  if (kind === "music") {
+    if (ctx.usagePurpose === "billing_ratios") return null;
+    return { music_tracks: 1 };
+  }
+  return mediaUsage(ctx);
+}
+
+// Only legacy per-call pricing calls this hook.
+export function extractUsageOnSubmit(ctx, body) {
+  const kind = taskKind(ctx);
+  if (kind !== "media") return null;
+  return mediaUsageOnSubmit(ctx, body);
+}
+
+export function extractUsageOnComplete(task, taskResult, body) {
+  const kind = taskKind(task);
+  if (kind === "cancel") return null;
+  if (kind === "image_prompt") return imagePromptUsage(body);
+  if (kind === "music") return musicAudio(body) ? { music_tracks: 1 } : null;
+  const h3Task = h3QueryTask(body);
+  const type = trimmed(h3Task && h3Task.task_type);
+  if (kind === "context_ir" || type === "h3_context_ir") return h3Task ? contextIRUsage(h3Task) : null;
+  if (kind === "regeneration" || type === "regeneration") return h3Task ? regenerationUsage(h3Task) : null;
+  return mediaUsageOnComplete(task, taskResult, body);
+}
+
+// A /v2 video artifact: a fresh link from MiniMax (its links expire), the
+// stored one when the query fails, or the other gateway's artifact endpoint.
+export function buildContentRequest(ctx) {
+  const method = (ctx.clientRequest && ctx.clientRequest.method) || "GET";
+  if (ctx.artifactKey !== "video") fail("artifact_not_found");
+  if (viaGateway(ctx)) {
+    if (!trimmed(ctx.upstreamTaskId)) fail("artifact_not_found");
+    return {
+      url: String(ctx.baseUrl || "").replace(/\/+$/, "") + "/v1/tasks/" + encodeURIComponent(trimmed(ctx.upstreamTaskId)) + "/artifacts/video/content",
+      method: method,
+      headers: { Authorization: bearer(ctx) },
+    };
+  }
+  let url = "";
+  if (trimmed(ctx.upstreamTaskId) && typeof utils !== "undefined" && utils && typeof utils.fetch === "function") {
+    try {
+      const fresh = utils.fetch({
+        url: String(ctx.baseUrl || "").replace(/\/+$/, "") + "/v2/query/video_generation/" + encodeURIComponent(trimmed(ctx.upstreamTaskId)),
+        method: "GET",
+        headers: { Accept: "application/json", Authorization: "Bearer " + ctx.apiKey },
+        responseType: "json",
+      });
+      if (fresh && fresh.status >= 200 && fresh.status < 300) {
+        const body = typeof fresh.body === "string" ? JSON.parse(fresh.body) : fresh.body;
+        const task = h3QueryTask(body);
+        if (task && task.status === "succeeded") url = trimmed(task.content && task.content.url);
+      }
+    } catch (e) {
+      url = "";
+    }
+  }
+  if (!url) url = h3ArtifactURL(ctx);
+  if (!url) fail("artifact_not_found");
+  return { url: url, method: method, credentialless: true };
+}
+
+// ---------------------------------------------------------------------------
+// Provider part: model list, speech and transcription. The text routes use
+// the host's passthrough and never reach these hooks.
+
+const SPEECH_PATH = "/v1/audio/speech";
+const TRANSCRIPTION_PATH = "/v1/audio/transcriptions";
+const MODELS_PATH = "/v1/models";
+const DEFAULT_VOICE = "English_Graceful_Lady";
+const OPENAI_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer", "verse", "marin", "cedar"];
+const SPEECH_FORMATS = { mp3: "audio/mpeg", wav: "audio/wav", pcm: "audio/pcm", flac: "audio/flac", opus: "audio/ogg" };
+const SPEECH_FIELDS = ["model", "input", "voice", "response_format", "speed", "instructions", "stream_format", "metadata"];
+const SPEECH_MAX_CHARS = 10000;
+// MiniMax options a speech request may carry in metadata, by where they go.
+const SPEECH_VOICE_OPTIONS = ["vol", "pitch", "emotion", "text_normalization", "latex_read"];
+const SPEECH_AUDIO_OPTIONS = ["sample_rate", "bitrate", "channel", "force_cbr"];
+const SPEECH_TOP_OPTIONS = ["language_boost", "pronunciation_dict", "voice_modify", "timbre_weights", "text_normalization_mode"];
+const TRANSCRIPTION_FIELDS = ["model", "language", "response_format", "temperature", "prompt", "timestamp_granularities", "timestamp_granularities[]"];
+const TRANSCRIPTION_FORMATS = ["json", "verbose_json"];
+
+const B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+function hexValue(text, index) {
+  const pair = parseInt(text.substr(index * 2, 2), 16);
+  if (!(pair >= 0 && pair <= 255)) throw new Error("invalid hex audio");
+  return pair;
+}
+
+// MiniMax sends audio as hex; the host's binary outputs take base64.
+export function hexToBase64(hex) {
+  const text = typeof hex === "string" ? hex.trim() : "";
+  if (text.length % 2 || /[^0-9a-fA-F]/.test(text)) throw new Error("invalid hex audio");
+  const bytes = text.length / 2;
+  const parts = [];
+  for (let i = 0; i < bytes; i += 3) {
+    const b0 = hexValue(text, i);
+    const b1 = i + 1 < bytes ? hexValue(text, i + 1) : 0;
+    const b2 = i + 2 < bytes ? hexValue(text, i + 2) : 0;
+    parts.push(
+      B64.charAt(b0 >> 2) +
+        B64.charAt(((b0 & 3) << 4) | (b1 >> 4)) +
+        (i + 1 < bytes ? B64.charAt(((b1 & 15) << 2) | (b2 >> 6)) : "=") +
+        (i + 2 < bytes ? B64.charAt(b2 & 63) : "="),
+    );
+  }
+  return parts.join("");
+}
+
+function convertError(status, message, code) {
+  const error = { status: status, message: message, type: "upstream_error" };
+  if (code) error.code = String(code);
+  return { error: error };
+}
+
+function parseJSON(text) {
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+}
+
+// HTTP statuses for MiniMax's business codes on HTTP 200 replies.
+const CODE_STATUS = { 1002: 429, 1004: 401, 1008: 402, 1026: 422, 1027: 422, 1039: 429, 1041: 429, 2013: 400, 2014: 400, 2022: 404, 2049: 401, 2053: 402, 2056: 429, 2061: 403, 2062: 429, 2067: 402, 2068: 403, 2069: 404 };
+
+function upstreamError(parsed, status) {
+  const body = plainObject(parsed) || {};
+  const error = plainObject(body.error);
+  const base = plainObject(body.base_resp);
+  const message = (error && trimmed(error.message)) || (base && trimmed(base.status_msg) ? trimmed(base.status_msg) + " (" + base.status_code + ")" : "") || "MiniMax request failed";
+  const code = base && present(base.status_code) ? Number(base.status_code) : 0;
+  let http = status >= 400 && status <= 599 ? status : CODE_STATUS[code] || (code ? 400 : 502);
+  if (error && Number(error.http_code) >= 400 && Number(error.http_code) <= 599) http = Number(error.http_code);
+  return convertError(http, "MiniMax: " + message, code || (error && error.type) || undefined);
+}
+
+export function buildSpeechRequest(body, model, config) {
+  if (!plainObject(body)) fail("A JSON body is required.");
+  onlyFields(body, SPEECH_FIELDS);
+  if (typeof body.input !== "string" || !body.input.trim()) fail("input is required");
+  if (codePoints(body.input) >= SPEECH_MAX_CHARS) fail("input must be shorter than " + SPEECH_MAX_CHARS + " characters");
+  if (present(body.voice) && typeof body.voice !== "string") fail("voice must be a string");
+  let voice = trimmed(body.voice);
+  if (!voice || OPENAI_VOICES.includes(voice.toLowerCase())) voice = trimmed(config && config.defaultVoice) || DEFAULT_VOICE;
+  const format = !present(body.response_format) || body.response_format === "" ? "mp3" : String(body.response_format).toLowerCase();
+  if (!own(SPEECH_FORMATS, format)) fail("response_format must be one of " + Object.keys(SPEECH_FORMATS).join(", "));
+  if (present(body.instructions) && body.instructions !== "") fail("instructions are not supported; set metadata.emotion or another MiniMax voice option");
+  if (present(body.stream_format) && body.stream_format !== "audio" && body.stream_format !== "sse") fail("stream_format must be audio or sse");
+  const metadata = present(body.metadata) ? plainObject(body.metadata) : {};
+  if (!metadata) fail("metadata must be an object");
+  const known = SPEECH_VOICE_OPTIONS.concat(SPEECH_AUDIO_OPTIONS, SPEECH_TOP_OPTIONS);
+  for (const key of Object.keys(metadata)) if (!known.includes(key)) fail("metadata." + key + " is not supported");
+  const voiceSetting = { voice_id: voice };
+  if (present(body.speed)) {
+    if (typeof body.speed !== "number" || body.speed < 0.5 || body.speed > 2) fail("speed must be between 0.5 and 2.0");
+    voiceSetting.speed = body.speed;
+  }
+  for (const key of SPEECH_VOICE_OPTIONS) if (present(metadata[key])) voiceSetting[key] = metadata[key];
+  const audioSetting = { format: format };
+  for (const key of SPEECH_AUDIO_OPTIONS) if (present(metadata[key])) audioSetting[key] = metadata[key];
+  const out = {
+    model: model,
+    text: body.input,
+    stream: true,
+    stream_options: { exclude_aggregated_audio: true },
+    voice_setting: voiceSetting,
+    audio_setting: audioSetting,
+  };
+  for (const key of SPEECH_TOP_OPTIONS) if (present(metadata[key])) out[key] = metadata[key];
+  return { body: out, format: format };
+}
+
+function formValue(fields, name) {
+  const raw = fields[name];
+  if (raw === undefined) return undefined;
+  const list = Array.isArray(raw) ? raw : [raw];
+  if (list.length > 1 && name.indexOf("timestamp_granularities") !== 0) fail(name + " must be provided once");
+  return list;
+}
+
+export function buildTranscriptionRequest(form, model) {
+  if (!form || !plainObject(form.fields) || !Array.isArray(form.files)) fail("A multipart form with a file is required.");
+  const fields = form.fields;
+  onlyFields(fields, TRANSCRIPTION_FIELDS);
+  const first = function (name) {
+    const list = formValue(fields, name);
+    return list ? list[0] : undefined;
+  };
+  if (trimmed(first("prompt"))) fail("prompt is not supported");
+  const format = trimmed(first("response_format")) || "json";
+  if (!TRANSCRIPTION_FORMATS.includes(format)) fail("response_format must be json or verbose_json");
+  const files = form.files.filter(function (file) {
+    return file.field === "file";
+  });
+  if (files.length !== 1 || form.files.length !== 1) fail("exactly one audio file is required in the file field");
+  const granularities = (formValue(fields, "timestamp_granularities[]") || []).concat(formValue(fields, "timestamp_granularities") || []);
+  const upstream = { model: model, response_format: format };
+  if (granularities.indexOf("word") >= 0) {
+    if (format !== "verbose_json") fail("word timestamps need response_format verbose_json");
+    upstream.timestamp_level = "word";
+  }
+  const headers = {};
+  const language = trimmed(first("language"));
+  if (language) headers.language = language;
+  return { form: { fields: upstream, files: [{ field: "file", from: "file" }] }, headers: headers, responseFormat: format };
+}
+
+// MiniMax bills transcription by the audio's duration; the seconds, rounded
+// up, travel as the request's tokens.
+export function transcriptionReply(parsed, state) {
+  const text = typeof parsed.text === "string" ? parsed.text : "";
+  const raw = Number(parsed.duration);
+  const seconds = Number.isFinite(raw) && raw > 0 ? Math.ceil(raw) : 0;
+  const usage = { type: "tokens", input_tokens: seconds, output_tokens: 0, total_tokens: seconds, prompt_tokens: seconds, completion_tokens: 0, seconds: seconds };
+  if (state && state.responseFormat === "verbose_json") {
+    const reply = { task: "transcribe", language: trimmed(state.language), duration: Number.isFinite(raw) ? raw : 0, text: text, usage: usage };
+    if (Array.isArray(parsed.segments)) reply.segments = parsed.segments;
+    if (present(parsed.n_speakers)) reply.n_speakers = parsed.n_speakers;
+    return reply;
+  }
+  return { text: text, usage: usage };
+}
+
+// MiniMax's model list has its text models only; the plugin's media models
+// are added, since the same key calls them.
+export function modelListReply(response) {
+  const parsed = typeof response.body === "string" ? parseJSON(response.body) : null;
+  if (!plainObject(parsed) || !Array.isArray(parsed.data)) return convertError(502, "MiniMax returned an unreadable model list");
+  const ids = [];
+  for (const item of parsed.data) {
+    const id = plainObject(item) && typeof item.id === "string" ? item.id.trim() : "";
+    if (id && ids.indexOf(id) < 0) ids.push(id);
+  }
+  for (const id of MEDIA_MODELS) if (ids.indexOf(id) < 0) ids.push(id);
+  return {
+    body: {
+      object: "list",
+      data: ids.map(function (id) {
+        return { id: id, object: "model", owned_by: "minimax" };
+      }),
+    },
+    contentType: "application/json",
+  };
+}
+
+export function convertRequest(ctx, request) {
+  const model = trimmed(request && request.model) || trimmed(request && request.body && request.body.model);
+  if (!model) fail("model is required");
+  if (ctx.path === SPEECH_PATH) {
+    const built = buildSpeechRequest(request.body, model, ctx.config);
+    const clientStream = request.stream === true || (plainObject(request.body) && request.body.stream_format === "sse");
+    return {
+      method: "POST",
+      body: built.body,
+      stream: true,
+      state: { kind: "speech", format: built.format, clientStream: clientStream, chunks: 0, characters: 0 },
+    };
+  }
+  if (ctx.path === TRANSCRIPTION_PATH) {
+    const built = buildTranscriptionRequest(request.form, model);
+    return {
+      method: "POST",
+      form: built.form,
+      headers: built.headers,
+      stream: false,
+      state: { kind: "transcription", responseFormat: built.responseFormat, language: trimmed(built.headers.language) },
+    };
+  }
+  fail("This plugin does not convert " + ctx.path);
+}
+
+function speechChunk(state, data) {
+  const audio = plainObject(data.data) ? trimmed(data.data.audio) : "";
+  const final = plainObject(data.data) && Number(data.data.status) === 2;
+  const extra = plainObject(data.extra_info) || {};
+  if (Number.isInteger(extra.usage_characters) && extra.usage_characters > state.characters) state.characters = extra.usage_characters;
+  // The last event repeats the whole audio unless MiniMax honoured
+  // exclude_aggregated_audio; keep it only when nothing came before.
+  if (!audio || (final && state.chunks > 0)) return { final: final, base64: "" };
+  return { final: final, base64: hexToBase64(audio) };
+}
+
+function speechResult(state, chunk) {
+  const result = { state: state };
+  if (chunk.base64) {
+    state.chunks += 1;
+    if (state.clientStream) result.events = [{ data: { type: "speech.audio.delta", audio: chunk.base64 } }];
+    else {
+      result.chunks = [{ bodyBase64: chunk.base64 }];
+      result.contentType = SPEECH_FORMATS[state.format] || "application/octet-stream";
+    }
+  }
+  if (state.clientStream && chunk.final) {
+    const events = result.events || [];
+    events.push({ data: { type: "speech.audio.done", usage: { input_tokens: state.characters, output_tokens: 0, total_tokens: state.characters } } });
+    result.events = events;
+  }
+  return result;
+}
+
+export function convertResponse(ctx, response) {
+  const state = ctx.state || {};
+  const status = response.status;
+  const text = response.body !== undefined ? response.body : "";
+  const parsed = typeof text === "string" ? parseJSON(text) : null;
+  if (ctx.path === MODELS_PATH) {
+    if (status < 200 || status >= 300) return upstreamError(parsed, status);
+    return modelListReply(response);
+  }
+  if (status < 200 || status >= 300) return upstreamError(parsed, status);
+  if (baseRespError(parsed)) return upstreamError(parsed, 0);
+  if (state.kind === "transcription") {
+    if (!plainObject(parsed)) return convertError(502, "MiniMax returned an unreadable transcription reply");
+    return { body: transcriptionReply(parsed, state) };
+  }
+  if (state.kind === "speech") {
+    // A whole JSON reply instead of the requested stream: its hex audio.
+    if (!plainObject(parsed)) return convertError(502, "MiniMax answered speech without audio");
+    if (state.clientStream) return convertError(502, "MiniMax answered a streamed speech request without a stream");
+    const audio = plainObject(parsed.data) ? trimmed(parsed.data.audio) : "";
+    if (!audio || /^https?:/i.test(audio)) return convertError(502, "MiniMax answered speech without audio");
+    return { bodyBase64: hexToBase64(audio), contentType: SPEECH_FORMATS[state.format] || "application/octet-stream" };
+  }
+  return convertError(502, "unexpected MiniMax reply");
+}
+
+export function convertStreamEvent(ctx, input) {
+  const state = Object.assign({ chunks: 0, characters: 0 }, ctx.state || {});
+  if (input && input.done) {
+    if (!state.chunks) return convertError(502, "MiniMax returned no audio");
+    return { state: state };
+  }
+  const data = input && typeof input.data === "string" ? parseJSON(input.data) : null;
+  if (!plainObject(data)) return convertError(502, "MiniMax sent an unreadable speech event");
+  if (baseRespError(data) || plainObject(data.error)) return upstreamError(data, 0);
+  return speechResult(state, speechChunk(state, data));
+}
