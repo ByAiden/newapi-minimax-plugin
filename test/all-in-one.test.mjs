@@ -267,11 +267,11 @@ test("regeneration by a gateway task id sends MiniMax's id and reserves the sour
   const request = plugin.buildSubmitRequest(ctx);
   assert.equal(request.url, BASE + "/v2/video_regeneration");
   assert.deepEqual(request.body, { model: "MiniMax-H3", source_task_id: "mm-src", resolution: "2K", generate_audio: false });
-  assert.deepEqual(plugin.extractUsage(ctx), { seconds: 6, input_images: 7, input_video_seconds: 0 });
+  assert.deepEqual(plugin.extractUsage(ctx), { seconds: 6, input_images: 7, billable_input_images: 2, input_video_seconds: 0 });
   // Without the source's data the longest video is held.
-  assert.deepEqual(plugin.extractUsage(driver(intent)), { seconds: 15, input_images: 0, input_video_seconds: 15 });
+  assert.deepEqual(plugin.extractUsage(driver(intent)), { seconds: 15, input_images: 0, billable_input_images: 0, input_video_seconds: 15 });
   const done = { task: { id: "rg1", status: "succeeded", task_type: "regeneration", resolution: "2K", content: { url: "https://cdn/r.mp4" }, usage: { output_seconds: 6, input_image_count: 7, input_seconds: 0 } } };
-  assert.deepEqual(plugin.extractUsageOnComplete({ action: "video_regeneration", model: "MiniMax-H3-Regeneration" }, {}, done), { seconds: 6, input_images: 7, input_video_seconds: 0 });
+  assert.deepEqual(plugin.extractUsageOnComplete({ action: "video_regeneration", model: "MiniMax-H3-Regeneration" }, {}, done), { seconds: 6, input_images: 7, input_video_seconds: 0, billable_input_images: 2 });
   assert.deepEqual(plugin.listArtifacts({ status: "SUCCESS", data: done }), [{ key: "video", type: "video", mimeType: "video/mp4" }]);
   // On a New API channel the other gateway resolves its own task id.
   const mid = plugin.buildSubmitRequest(Object.assign({}, ctx, { upstream: { kind: "new_api" }, authHeader: "Bearer sk-mid" }));
@@ -291,7 +291,7 @@ test("regeneration by source video needs exactly one base_video", () => {
   assert.equal(intent.originTaskIds, undefined);
   const body = plugin.buildSubmitRequest(driver(intent)).body;
   assert.deepEqual(body, { model: "MiniMax-H3", content: content, resolution: "2K" });
-  assert.deepEqual(plugin.extractUsage(driver(intent)), { seconds: 15, input_images: 1, input_video_seconds: 15 });
+  assert.deepEqual(plugin.extractUsage(driver(intent)), { seconds: 15, input_images: 1, billable_input_images: 0, input_video_seconds: 15 });
   const bad = [
     [{ content: content, source_task_id: "t" }, /either source_task_id or content/],
     [{}, /either source_task_id or content/],
@@ -314,7 +314,7 @@ test("cancel or delete names the gateway task and costs nothing", () => {
   const ctx = driver(intent, { originTasks: [{ taskId: "task_v", upstreamTaskId: "424010985738629", action: "text_to_video", status: "QUEUED", data: { task_id: "424010985738629" } }] });
   const request = plugin.buildSubmitRequest(ctx);
   assert.deepEqual(request, { url: BASE + "/v2/video_generation/424010985738629", method: "DELETE", headers: { Accept: "application/json", Authorization: "Bearer sk-test" }, action: "cancel_task" });
-  assert.deepEqual(plugin.extractUsage(ctx), { seconds: 0, resolution: "768P", input_images: 0, input_video_seconds: 0 });
+  assert.deepEqual(plugin.extractUsage(ctx), { seconds: 0, resolution: "768P", input_images: 0, billable_input_images: 0, input_video_seconds: 0 });
   assert.deepEqual(plugin.extractUsage(Object.assign({}, ctx, { usagePurpose: "billing_ratios" })), { seconds: 0 });
   const parsed = plugin.parseSubmitResponse(ctx, { statusCode: 200, headers: {}, body: { task_id: "424010985738629", action: "cancelled", status: "cancelled" } });
   assert.deepEqual(parsed, { taskId: "task_pub", taskData: { task_id: "task_v", action: "cancelled", status: "cancelled" }, immediate: { status: "SUCCESS", progress: "100%" } });

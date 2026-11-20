@@ -235,7 +235,7 @@ test("H3 text to video builds the /v2 body and reserves the request", () => {
   const request = plugin.buildSubmitRequest(driver(intent));
   assert.equal(request.url, BASE + "/v2/video_generation");
   assert.deepEqual(request.body, { model: "MiniMax-H3", content: [{ type: "text", text: "A fox in snow" }], resolution: "2K", duration: 8, ratio: "16:9" });
-  assert.deepEqual(plugin.extractUsage(driver(intent)), { seconds: 8, resolution: "2K", input_images: 0, input_video_seconds: 0 });
+  assert.deepEqual(plugin.extractUsage(driver(intent)), { seconds: 8, resolution: "2K", input_images: 0, billable_input_images: 0, input_video_seconds: 0 });
   assert.equal(plugin.extractUsage(Object.assign(driver(intent), { usagePurpose: "billing_ratios" })), null);
   assert.throws(() => protocols.openai_video.decodeRequest(jsonCtx({ prompt: "x", seconds: 20 }, { model: "MiniMax-H3" })), /between 4 and 15/);
   assert.throws(() => protocols.openai_video.decodeRequest(jsonCtx({ prompt: "x", size: "1080P" }, { model: "MiniMax-H3" })), /768P or 2K/);
@@ -276,7 +276,7 @@ test("native H3 tasks submit, poll and download as before", () => {
   const value = { model: "MiniMax-H3", content: [{ type: "text", text: "A fox" }], duration: 6, resolution: "768P" };
   const intent = native.createH3Task(jsonCtx(value));
   assert.deepEqual(plugin.buildSubmitRequest(driver(intent)).body, value);
-  assert.deepEqual(plugin.extractUsage(driver(intent)), { seconds: 6, resolution: "768P", input_images: 0, input_video_seconds: 0 });
+  assert.deepEqual(plugin.extractUsage(driver(intent)), { seconds: 6, resolution: "768P", input_images: 0, billable_input_images: 0, input_video_seconds: 0 });
   assert.throws(() => native.createH3Task(jsonCtx(Object.assign({ callback_url: "https://x" }, value))), /callback_url/);
   const created = plugin.parseSubmitResponse(driver(intent), { statusCode: 200, headers: {}, body: { task_id: "mm1" } });
   assert.deepEqual(created, { taskId: "mm1", taskData: { task_id: "mm1" } });
@@ -287,7 +287,7 @@ test("native H3 tasks submit, poll and download as before", () => {
   assert.equal(plugin.parseTaskResult({}, { task: { status: "failed", error: { message: "bad" } } }).reason, "bad");
   assert.throws(() => plugin.parseTaskResult({}, { error: { message: "busy", http_code: "429" } }), /busy/);
   assert.equal(plugin.parseTaskResult({}, { status: "Success" }).status, "UNKNOWN");
-  assert.deepEqual(plugin.extractUsageOnComplete({ model: "MiniMax-H3", upstreamModel: "MiniMax-H3" }, {}, done), { resolution: "768P", seconds: 6, input_images: 0, input_video_seconds: 0 });
+  assert.deepEqual(plugin.extractUsageOnComplete({ model: "MiniMax-H3", upstreamModel: "MiniMax-H3" }, {}, done), { resolution: "768P", seconds: 6, input_images: 0, input_video_seconds: 0, billable_input_images: 0 });
   const task = { status: "SUCCESS", data: done };
   assert.deepEqual(plugin.listArtifacts(task), [{ key: "video", type: "video", mimeType: "video/mp4" }]);
   assert.deepEqual(plugin.buildContentRequest({ artifactKey: "video", data: done, clientRequest: { method: "GET" } }), { url: "https://cdn/v.mp4", method: "GET", credentialless: true });
@@ -318,7 +318,7 @@ test("each H3 video model has its own resolutions and price profile", () => {
     const request = plugin.buildSubmitRequest(driver(intent));
     assert.equal(request.url, BASE + "/v2/video_generation");
     assert.deepEqual(request.body, { model: model, content: [{ type: "text", text: "A fox" }], resolution: "480P", duration: 6, ratio: "16:9" });
-    assert.deepEqual(plugin.extractUsage(driver(intent)), { seconds: 6, resolution: "480P", input_images: 0, input_video_seconds: 0 });
+    assert.deepEqual(plugin.extractUsage(driver(intent)), { seconds: 6, resolution: "480P", input_images: 0, billable_input_images: 0, input_video_seconds: 0 });
     assert.equal(plugin.buildSubmitRequest(driver(video(model, { prompt: "x" }))).body.resolution, "768P");
     assert.throws(() => video(model, { prompt: "x", size: "2K" }), /resolution must be 480P or 768P/);
   }
@@ -346,8 +346,8 @@ test("H3-Lite reference videos get a concrete ratio; frames stay adaptive", () =
 
 test("native requests without a resolution reserve each model's dearest", () => {
   const usage = (model) => plugin.extractUsage(driver(native.createH3Task(jsonCtx({ model: model, content: [{ type: "text", text: "x" }] }))));
-  assert.deepEqual(usage("MiniMax-H3"), { seconds: 15, resolution: "2K", input_images: 0, input_video_seconds: 0 });
-  assert.deepEqual(usage("MiniMax-H3-Lite"), { seconds: 15, resolution: "768P", input_images: 0, input_video_seconds: 0 });
+  assert.deepEqual(usage("MiniMax-H3"), { seconds: 15, resolution: "2K", input_images: 0, billable_input_images: 0, input_video_seconds: 0 });
+  assert.deepEqual(usage("MiniMax-H3-Lite"), { seconds: 15, resolution: "768P", input_images: 0, billable_input_images: 0, input_video_seconds: 0 });
 });
 
 test("completion settles on resolutions the model renders", () => {

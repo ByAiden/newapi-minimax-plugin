@@ -99,7 +99,7 @@ test("another gateway's presenter output still lists, settles and downloads the 
   const middle = native.h3TaskStatus({ artifacts: { video: { url: GATEWAY_URL } } }, { task_id: "task_mid", status: "SUCCESS", data: VENDOR_DONE });
   const outer = { model: "MiniMax-H3", upstreamModel: "MiniMax-H3", upstream: { kind: "new_api" } };
   assert.deepEqual(plugin.parseTaskResult(outer, middle), { code: 0, status: "SUCCESS", progress: "100%", url: GATEWAY_URL });
-  assert.deepEqual(plugin.extractUsageOnComplete(outer, {}, middle), { resolution: "768P", seconds: 6, input_images: 1, input_video_seconds: 0 });
+  assert.deepEqual(plugin.extractUsageOnComplete(outer, {}, middle), { resolution: "768P", seconds: 6, input_images: 1, billable_input_images: 0, input_video_seconds: 0 });
   assert.deepEqual(plugin.listArtifacts({ status: "SUCCESS", data: middle }), [{ key: "video", type: "video", mimeType: "video/mp4" }]);
   // A middle gateway without a public address answers without a link.
   const bare = native.h3TaskStatus({ artifacts: {} }, { task_id: "task_mid", status: "SUCCESS", data: VENDOR_DONE });

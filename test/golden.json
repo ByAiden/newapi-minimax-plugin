@@ -85,6 +85,7 @@
         "seconds": 6,
         "resolution": "768P",
         "input_images": 0,
+        "billable_input_images": 0,
         "input_video_seconds": 0
       }
     },
@@ -306,7 +307,8 @@
         "resolution": "768P",
         "seconds": 6,
         "input_images": 0,
-        "input_video_seconds": 0
+        "input_video_seconds": 0,
+        "billable_input_images": 0
       }
     },
     {
@@ -405,7 +407,8 @@
         "resolution": "768P",
         "seconds": 6,
         "input_images": 0,
-        "input_video_seconds": 0
+        "input_video_seconds": 0,
+        "billable_input_images": 0
       }
     },
     {
@@ -856,7 +859,8 @@
       "expected": {
         "seconds": 6,
         "input_images": 0,
-        "input_video_seconds": 0
+        "input_video_seconds": 0,
+        "billable_input_images": 0
       }
     },
     {
@@ -984,6 +988,7 @@
         "seconds": 0,
         "resolution": "768P",
         "input_images": 0,
+        "billable_input_images": 0,
         "input_video_seconds": 0
       }
     },
@@ -1669,6 +1674,672 @@
           ]
         },
         "contentType": "application/json"
+      }
+    },
+    {
+      "name": "relay image goes to the relay's images endpoint",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "model": "MiniMax-H3-Image",
+            "imageOperation": "generate",
+            "imageBody": {
+              "prompt": "A cat",
+              "n": 1
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "text_to_image",
+          "model": "MiniMax-H3-Image",
+          "upstreamModel": "relay-image",
+          "baseUrl": "https://relay.example",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {
+            "upstreamType": "openai",
+            "defaultVoice": "English_Graceful_Lady"
+          },
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expected": {
+        "url": "https://relay.example/v1/images/generations",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer test-key"
+        },
+        "body": {
+          "prompt": "A cat",
+          "n": 1,
+          "model": "relay-image"
+        },
+        "action": "text_to_image"
+      }
+    },
+    {
+      "name": "relay image keeps the estimate of one image",
+      "hook": "parseSubmitResponse",
+      "args": [
+        {
+          "requestBody": {
+            "model": "MiniMax-H3-Image",
+            "imageOperation": "generate",
+            "imageBody": {
+              "prompt": "A cat",
+              "n": 1
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "text_to_image",
+          "model": "MiniMax-H3-Image",
+          "upstreamModel": "MiniMax-H3-Image",
+          "baseUrl": "https://relay.example",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {
+            "upstreamType": "openai",
+            "defaultVoice": "English_Graceful_Lady"
+          },
+          "files": [],
+          "publicTaskId": "task_public"
+        },
+        {
+          "statusCode": 200,
+          "headers": {},
+          "body": {
+            "created": 1,
+            "data": [
+              {
+                "url": "https://cdn.relay.example/a.png"
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "taskId": "task_public",
+        "taskData": {
+          "created": 1,
+          "data": [
+            {
+              "url": "https://cdn.relay.example/a.png"
+            }
+          ]
+        },
+        "immediate": {
+          "status": "SUCCESS",
+          "progress": "100%",
+          "url": "https://cdn.relay.example/a.png"
+        },
+        "state": {
+          "relay": true,
+          "perImage": {
+            "image_input_text_tokens": 8197,
+            "image_input_image_tokens": 0,
+            "image_output_tokens": 16384
+          }
+        }
+      }
+    },
+    {
+      "name": "relay image settles on OpenAI usage",
+      "hook": "extractUsageOnComplete",
+      "args": [
+        {
+          "taskId": "mm1",
+          "publicTaskId": "task_public",
+          "action": "text_to_image",
+          "model": "MiniMax-H3-Image",
+          "upstreamModel": "MiniMax-H3-Image",
+          "baseUrl": "https://relay.example",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {
+            "upstreamType": "openai",
+            "defaultVoice": "English_Graceful_Lady"
+          },
+          "state": {
+            "relay": true,
+            "perImage": {
+              "image_input_text_tokens": 8197,
+              "image_input_image_tokens": 0,
+              "image_output_tokens": 16384
+            }
+          }
+        },
+        {
+          "status": "SUCCESS"
+        },
+        {
+          "data": [
+            {
+              "url": "https://x/a.png"
+            }
+          ],
+          "usage": {
+            "input_tokens": 40,
+            "output_tokens": 4096
+          }
+        }
+      ],
+      "expected": {
+        "image_input_text_tokens": 40,
+        "image_input_image_tokens": 0,
+        "image_output_tokens": 4096,
+        "image_count": 1
+      }
+    },
+    {
+      "name": "relay channel refuses video",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "prompt": "A fox in snow",
+            "seconds": 6,
+            "duration": 6,
+            "model": "MiniMax-H3"
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "text_to_video",
+          "model": "MiniMax-H3",
+          "upstreamModel": "MiniMax-H3",
+          "baseUrl": "https://relay.example",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {
+            "upstreamType": "openai",
+            "defaultVoice": "English_Graceful_Lady"
+          },
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expectedError": "Video generation is not available on this channel: its upstr"
+    },
+    {
+      "name": "relay channel refuses video before reserving",
+      "hook": "extractUsage",
+      "args": [
+        {
+          "requestBody": {
+            "prompt": "A fox in snow",
+            "seconds": 6,
+            "duration": 6,
+            "model": "MiniMax-H3"
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "text_to_video",
+          "model": "MiniMax-H3",
+          "upstreamModel": "MiniMax-H3",
+          "baseUrl": "https://relay.example",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {
+            "upstreamType": "openai",
+            "defaultVoice": "English_Graceful_Lady"
+          },
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expectedError": "Video generation is not available on this channel: its upstr"
+    },
+    {
+      "name": "relay channel refuses music",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "kind": "music",
+            "model": "music-3.0",
+            "musicBody": {
+              "prompt": "Indie folk",
+              "lyrics": "[verse]\nStreetlights flicker",
+              "output_format": "url"
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "music_generation",
+          "model": "music-3.0",
+          "upstreamModel": "music-3.0",
+          "baseUrl": "https://relay.example",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {
+            "upstreamType": "openai",
+            "defaultVoice": "English_Graceful_Lady"
+          },
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expectedError": "Music generation is not available on this channel: its upstr"
+    },
+    {
+      "name": "another gateway ignores the upstream type",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "requestBody": {
+            "prompt": "A fox in snow",
+            "seconds": 6,
+            "duration": 6,
+            "model": "MiniMax-H3"
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "text_to_video",
+          "model": "MiniMax-H3",
+          "upstreamModel": "MiniMax-H3",
+          "baseUrl": "https://mid.example",
+          "apiKey": "test-key",
+          "authHeader": "Bearer test-key",
+          "upstream": {
+            "kind": "new_api"
+          },
+          "config": {
+            "upstreamType": "openai",
+            "defaultVoice": "English_Graceful_Lady"
+          },
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expected": {
+        "url": "https://mid.example/byaiden_minimax/v2/video_generation",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer test-key"
+        },
+        "body": {
+          "model": "MiniMax-H3",
+          "content": [
+            {
+              "type": "text",
+              "text": "A fox in snow"
+            }
+          ],
+          "resolution": "768P",
+          "duration": 6,
+          "ratio": "16:9"
+        },
+        "action": "text_to_video"
+      }
+    },
+    {
+      "name": "relay speech passes the OpenAI body",
+      "hook": "convertRequest",
+      "args": [
+        {
+          "baseUrl": "https://relay.example",
+          "path": "/v1/audio/speech",
+          "config": {
+            "upstreamType": "openai",
+            "defaultVoice": "English_Graceful_Lady"
+          }
+        },
+        {
+          "model": "speech-2.8-turbo",
+          "stream": false,
+          "body": {
+            "model": "speech-2.8-turbo",
+            "input": "Hello",
+            "voice": "alloy"
+          }
+        }
+      ],
+      "expected": {
+        "path": "/v1/audio/speech",
+        "method": "POST",
+        "body": {
+          "model": "speech-2.8-turbo",
+          "input": "Hello",
+          "voice": "alloy"
+        },
+        "stream": false,
+        "state": {
+          "kind": "speech",
+          "relay": true,
+          "format": "mp3",
+          "clientStream": false
+        }
+      }
+    },
+    {
+      "name": "relay speech bytes pass through",
+      "hook": "convertResponse",
+      "args": [
+        {
+          "state": {
+            "kind": "speech",
+            "relay": true,
+            "format": "mp3",
+            "clientStream": false
+          },
+          "baseUrl": "https://relay.example",
+          "path": "/v1/audio/speech",
+          "config": {
+            "upstreamType": "openai",
+            "defaultVoice": "English_Graceful_Lady"
+          }
+        },
+        {
+          "status": 200,
+          "headers": {
+            "Content-Type": "audio/mpeg"
+          },
+          "bodyBase64": "SUQz"
+        }
+      ],
+      "expected": {
+        "bodyBase64": "SUQz",
+        "contentType": "audio/mpeg"
+      }
+    },
+    {
+      "name": "relay transcription bills its seconds",
+      "hook": "convertResponse",
+      "args": [
+        {
+          "state": {
+            "kind": "transcription",
+            "relay": true
+          },
+          "baseUrl": "https://relay.example",
+          "path": "/v1/audio/transcriptions",
+          "config": {
+            "upstreamType": "openai",
+            "defaultVoice": "English_Graceful_Lady"
+          }
+        },
+        {
+          "status": 200,
+          "headers": {},
+          "body": "{\"text\":\"Hi.\",\"usage\":{\"type\":\"duration\",\"seconds\":7}}"
+        }
+      ],
+      "expected": {
+        "body": {
+          "text": "Hi.",
+          "usage": {
+            "type": "tokens",
+            "input_tokens": 7,
+            "output_tokens": 0,
+            "total_tokens": 7,
+            "prompt_tokens": 7,
+            "completion_tokens": 0,
+            "seconds": 7
+          }
+        }
+      }
+    },
+    {
+      "name": "relay model list as it is",
+      "hook": "convertResponse",
+      "args": [
+        {
+          "baseUrl": "https://relay.example",
+          "path": "/v1/models",
+          "config": {
+            "upstreamType": "openai",
+            "defaultVoice": "English_Graceful_Lady"
+          },
+          "state": null
+        },
+        {
+          "status": 200,
+          "headers": {},
+          "body": "{\"object\":\"list\",\"data\":[{\"id\":\"gpt-x\",\"object\":\"model\",\"owned_by\":\"relay\"}]}"
+        }
+      ],
+      "expected": {
+        "body": {
+          "object": "list",
+          "data": [
+            {
+              "id": "gpt-x",
+              "object": "model",
+              "owned_by": "relay"
+            }
+          ]
+        },
+        "contentType": "application/json"
+      }
+    },
+    {
+      "name": "relay messages path",
+      "hook": "prepareRequest",
+      "args": [
+        {
+          "baseUrl": "https://relay.example",
+          "path": "/v1/messages",
+          "config": {
+            "upstreamType": "openai",
+            "defaultVoice": "English_Graceful_Lady"
+          }
+        },
+        {
+          "path": "/v1/messages",
+          "upstreamPath": "/anthropic/v1/messages",
+          "model": "MiniMax-M3",
+          "stream": false,
+          "body": {},
+          "headers": {}
+        }
+      ],
+      "expected": {
+        "path": "/v1/messages"
+      }
+    },
+    {
+      "name": "relay channel needs the relay's address",
+      "hook": "checkKey",
+      "args": [
+        {
+          "baseUrl": "https://api.minimaxi.com",
+          "config": {
+            "upstreamType": "openai",
+            "defaultVoice": "English_Graceful_Lady"
+          }
+        },
+        "k"
+      ],
+      "expected": {
+        "error": {
+          "en": "Upstream type is OpenAI-compatible relay: set the channel Base URL to the relay's address, not MiniMax's.",
+          "zh": "上游类型为 OpenAI 兼容中转：请把渠道 Base URL 设为中转地址，而不是 MiniMax 官方地址。"
+        }
+      }
+    },
+    {
+      "name": "H3-Max charges images beyond the first 2",
+      "hook": "extractUsage",
+      "args": [
+        {
+          "requestBody": {
+            "model": "MiniMax-H3-Max",
+            "vendorBody": {
+              "model": "MiniMax-H3-Max",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "x"
+                },
+                {
+                  "type": "image_url",
+                  "image_url": {
+                    "url": "https://img.example/0.png"
+                  },
+                  "role": "reference_image"
+                },
+                {
+                  "type": "image_url",
+                  "image_url": {
+                    "url": "https://img.example/1.png"
+                  },
+                  "role": "reference_image"
+                },
+                {
+                  "type": "image_url",
+                  "image_url": {
+                    "url": "https://img.example/2.png"
+                  },
+                  "role": "reference_image"
+                },
+                {
+                  "type": "image_url",
+                  "image_url": {
+                    "url": "https://img.example/3.png"
+                  },
+                  "role": "reference_image"
+                },
+                {
+                  "type": "image_url",
+                  "image_url": {
+                    "url": "https://img.example/4.png"
+                  },
+                  "role": "reference_image"
+                },
+                {
+                  "type": "image_url",
+                  "image_url": {
+                    "url": "https://img.example/5.png"
+                  },
+                  "role": "reference_image"
+                },
+                {
+                  "type": "image_url",
+                  "image_url": {
+                    "url": "https://img.example/6.png"
+                  },
+                  "role": "reference_image"
+                },
+                {
+                  "type": "image_url",
+                  "image_url": {
+                    "url": "https://img.example/7.png"
+                  },
+                  "role": "reference_image"
+                },
+                {
+                  "type": "image_url",
+                  "image_url": {
+                    "url": "https://img.example/8.png"
+                  },
+                  "role": "reference_image"
+                }
+              ],
+              "duration": 5,
+              "resolution": "768P"
+            }
+          },
+          "requestHeaders": {
+            "Content-Type": "application/json",
+            "Accept": ""
+          },
+          "action": "image_to_video",
+          "model": "MiniMax-H3-Max",
+          "upstreamModel": "MiniMax-H3-Max",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {},
+          "files": [],
+          "publicTaskId": "task_public"
+        }
+      ],
+      "expected": {
+        "seconds": 5,
+        "resolution": "768P",
+        "input_images": 9,
+        "billable_input_images": 7,
+        "input_video_seconds": 0
+      }
+    },
+    {
+      "name": "settlement recomputes the billable images",
+      "hook": "extractUsageOnComplete",
+      "args": [
+        {
+          "taskId": "mm1",
+          "publicTaskId": "task_public",
+          "action": "text_to_video",
+          "model": "MiniMax-H3",
+          "upstreamModel": "MiniMax-H3",
+          "baseUrl": "https://api.minimaxi.com",
+          "apiKey": "test-key",
+          "authHeader": "test-key",
+          "upstream": {
+            "kind": "vendor"
+          },
+          "config": {}
+        },
+        {
+          "status": "SUCCESS"
+        },
+        {
+          "task": {
+            "status": "succeeded",
+            "resolution": "768P",
+            "usage": {
+              "output_seconds": 6,
+              "input_image_count": 8,
+              "input_seconds": 0
+            }
+          }
+        }
+      ],
+      "expected": {
+        "resolution": "768P",
+        "seconds": 6,
+        "input_images": 8,
+        "input_video_seconds": 0,
+        "billable_input_images": 3
       }
     }
   ]

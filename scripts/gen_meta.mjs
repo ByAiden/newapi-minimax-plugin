@@ -43,7 +43,7 @@ const manifest = {
     en: "MiniMax text, speech, transcription, H3 video, H3-Image and music on one channel",
     zh: "一个渠道接入 MiniMax 文本、语音合成、语音识别、H3 视频、H3-Image 图片与音乐",
   },
-  version: "2.0.2",
+  version: "2.1.0",
   author: author,
   website: "https://platform.minimax.io/docs/api-reference/api-overview",
   baseUrl: "https://api.minimaxi.com",
@@ -59,7 +59,8 @@ const manifest = {
   ],
   usageProfiles: [
     profile(["MiniMax-H3"], p.H3_USAGE_SCHEMA, p.H3_EXAMPLES),
-    profile(p.FAST_VIDEO_MODELS, p.H3_FAST_USAGE_SCHEMA, p.H3_FAST_EXAMPLES),
+    profile(p.FAST_VIDEO_MODELS.filter((model) => model !== "MiniMax-H3-Max"), p.H3_FAST_USAGE_SCHEMA, p.H3_FAST_EXAMPLES),
+    profile(["MiniMax-H3-Max"], p.H3_FAST_USAGE_SCHEMA, p.H3_MAX_EXAMPLES),
     profile([p.CONTEXT_IR_MODEL], p.CONTEXT_IR_USAGE_SCHEMA, p.CONTEXT_IR_EXAMPLES),
     profile([p.REGENERATION_MODEL], p.REGENERATION_USAGE_SCHEMA, p.REGENERATION_EXAMPLES),
     profile(p.IMAGE_MODELS, p.IMAGE_USAGE_SCHEMA, p.IMAGE_EXAMPLES),
@@ -92,6 +93,20 @@ const manifest = {
   channelConfig: {
     type: "object",
     properties: {
+      upstreamType: {
+        type: "string",
+        title: { en: "Upstream type", zh: "上游类型" },
+        description: {
+          en: "MiniMax API: the Base URL is MiniMax's (blank = https://api.minimaxi.com; https://api.minimax.io for the international site). OpenAI-compatible relay: the Base URL is a relay that speaks OpenAI's API; text, speech, transcription and image generation go there, video, music and the other MiniMax task endpoints are refused.",
+          zh: "MiniMax 官方 API：Base URL 为 MiniMax 地址（留空即 https://api.minimaxi.com，国际站填 https://api.minimax.io）。OpenAI 兼容中转：Base URL 填兼容 OpenAI 接口的中转地址，文本、语音合成、语音识别和图片生成发往该地址，视频、音乐等 MiniMax 任务接口会被拒绝。",
+        },
+        enum: ["minimax", "openai"],
+        enumTitles: [
+          { en: "MiniMax API", zh: "MiniMax 官方 API" },
+          { en: "OpenAI-compatible relay", zh: "OpenAI 兼容中转" },
+        ],
+        default: "minimax",
+      },
       defaultVoice: {
         type: "string",
         title: { en: "Default voice", zh: "默认音色" },
@@ -106,8 +121,8 @@ const manifest = {
     },
   },
   keyHint: {
-    en: "MiniMax API key of the site the Base URL points to",
-    zh: "MiniMax API Key，与 Base URL 所在站点对应",
+    en: "MiniMax API key of the site the Base URL points to, or the relay's key when Upstream type is OpenAI-compatible relay",
+    zh: "MiniMax API Key，与 Base URL 所在站点对应；上游类型为 OpenAI 兼容中转时填中转的 Key",
   },
 };
 

@@ -2,7 +2,9 @@
 // Anthropic Messages, passed through), speech and transcription (converted from
 // the OpenAI audio endpoints), MiniMax-H3 video tasks (generation,
 // H3-Context-IR, regeneration, cancel and delete), MiniMax-H3-Image generation,
-// editing and prompt enhancement, and music generation.
+// editing and prompt enhancement, and music generation. A channel set to the
+// OpenAI-compatible relay upstream type sends text, speech, transcription and
+// image generation to a relay that speaks OpenAI's API instead.
 
 // ---------------------------------------------------------------------------
 // Models. The manifest below is a plain literal written from these by
@@ -28,19 +30,23 @@ const H3_MODEL = "MiniMax-H3";
 // What each H3 video model renders, the dearest resolution last
 // (platform.minimax.io/docs/api-reference/video-generation-v2-create).
 // H3-Lite has no adaptive ratio for reference media; only H3-Max takes extra.
+// freeImages: the input images MiniMax does not charge (the first 5, the
+// first 2 on H3-Max).
 export const VIDEO_PROFILES = {
-  "MiniMax-H3": { resolutions: ["768P", "2K"], minDuration: 4 },
-  "MiniMax-H3-Highspeed": { resolutions: ["480P", "768P"], minDuration: 4 },
-  "MiniMax-H3-Lite": { resolutions: ["480P", "768P"], minDuration: 4, fixedReferenceRatio: true },
-  "MiniMax-H3-Max": { resolutions: ["480P", "768P"], minDuration: 5, extra: true },
+  "MiniMax-H3": { resolutions: ["768P", "2K"], minDuration: 4, freeImages: 5 },
+  "MiniMax-H3-Highspeed": { resolutions: ["480P", "768P"], minDuration: 4, freeImages: 5 },
+  "MiniMax-H3-Lite": { resolutions: ["480P", "768P"], minDuration: 4, fixedReferenceRatio: true, freeImages: 5 },
+  "MiniMax-H3-Max": { resolutions: ["480P", "768P"], minDuration: 5, extra: true, freeImages: 2 },
 };
 export const VIDEO_MODELS = Object.keys(VIDEO_PROFILES);
 export const FAST_VIDEO_MODELS = VIDEO_MODELS.filter(function (model) {
   return model !== H3_MODEL;
 });
+// Regeneration runs on MiniMax-H3 and has its free images.
+const REGENERATION_FREE_IMAGES = 5;
 // A mapped upstream name the plugin does not list may render anything the
-// family renders.
-const ANY_VIDEO_PROFILE = { resolutions: ["480P", "768P", "2K"], minDuration: 4 };
+// family renders, with the smallest free image allowance.
+const ANY_VIDEO_PROFILE = { resolutions: ["480P", "768P", "2K"], minDuration: 4, freeImages: 2 };
 // H3-Context-IR and video regeneration run on MiniMax-H3 at MiniMax's own
 // prices; the gateway names them as MiniMax's price list does.
 export const CONTEXT_IR_MODEL = "MiniMax-H3-Context-IR";
@@ -72,14 +78,18 @@ const VIDEO_SECONDS_FIELD = {
 };
 const RESOLUTION_DESCRIPTION = { en: "Output video resolution", zh: "输出视频分辨率" };
 const INPUT_IMAGES_FIELD = { type: "number", unit: "count", description: { en: "Input image unit price", zh: "输入图片单价" } };
+// The input images beyond the model's free allowance: what MiniMax charges.
+const BILLABLE_INPUT_IMAGES_FIELD = { type: "number", unit: "count", description: { en: "Billable input image unit price", zh: "计费输入图片单价" } };
 const INPUT_VIDEO_FIELD = { type: "number", unit: "second", description: { en: "Input video unit price", zh: "输入视频单价" } };
 
 // MiniMax-H3 renders 768P or 2K. Input images are estimated at submit and
-// settled on completion; input video is reserved at the request maximum.
+// settled on completion, billable_input_images being those beyond the free
+// allowance; input video is reserved at the request maximum.
 export const H3_USAGE_SCHEMA = {
   seconds: VIDEO_SECONDS_FIELD,
   resolution: { enum: ["768P", "2K"], description: RESOLUTION_DESCRIPTION },
   input_images: INPUT_IMAGES_FIELD,
+  billable_input_images: BILLABLE_INPUT_IMAGES_FIELD,
   input_video_seconds: INPUT_VIDEO_FIELD,
 };
 
@@ -108,6 +118,7 @@ export const CONTEXT_IR_USAGE_SCHEMA = {
 export const REGENERATION_USAGE_SCHEMA = {
   seconds: VIDEO_SECONDS_FIELD,
   input_images: INPUT_IMAGES_FIELD,
+  billable_input_images: BILLABLE_INPUT_IMAGES_FIELD,
   input_video_seconds: INPUT_VIDEO_FIELD,
 };
 
@@ -119,20 +130,26 @@ function example(label, defaults, facts) {
   return { label: label, facts: Object.assign({}, defaults, facts) };
 }
 
-const H3_FACTS = { seconds: 5, resolution: "768P", input_images: 0, input_video_seconds: 0 };
+const H3_FACTS = { seconds: 5, resolution: "768P", input_images: 0, billable_input_images: 0, input_video_seconds: 0 };
 const IMAGE_FACTS = { image_input_text_tokens: 0, image_input_image_tokens: 0, image_output_tokens: 0, image_count: 0 };
-const REGENERATION_FACTS = { seconds: 5, input_images: 0, input_video_seconds: 0 };
+const REGENERATION_FACTS = { seconds: 5, input_images: 0, billable_input_images: 0, input_video_seconds: 0 };
 
 export const H3_EXAMPLES = [
   example("H3 768P 5s", H3_FACTS, {}),
   example("H3 2K 5s", H3_FACTS, { resolution: "2K" }),
-  example("H3 2K 5s · 9 images", H3_FACTS, { resolution: "2K", input_images: 9 }),
+  example("H3 2K 5s · 9 images", H3_FACTS, { resolution: "2K", input_images: 9, billable_input_images: 4 }),
   example("H3 2K 5s · input video", H3_FACTS, { resolution: "2K", input_video_seconds: 15 }),
 ];
 export const H3_FAST_EXAMPLES = [
   example("480P 5s", H3_FACTS, { resolution: "480P" }),
   example("768P 5s", H3_FACTS, {}),
-  example("768P 10s · 9 images", H3_FACTS, { seconds: 10, input_images: 9 }),
+  example("768P 10s · 9 images", H3_FACTS, { seconds: 10, input_images: 9, billable_input_images: 4 }),
+  example("768P 5s · input video", H3_FACTS, { input_video_seconds: 15 }),
+];
+export const H3_MAX_EXAMPLES = [
+  example("480P 5s", H3_FACTS, { resolution: "480P" }),
+  example("768P 5s", H3_FACTS, {}),
+  example("768P 10s · 9 images", H3_FACTS, { seconds: 10, input_images: 9, billable_input_images: 7 }),
   example("768P 5s · input video", H3_FACTS, { input_video_seconds: 15 }),
 ];
 // Token counts follow MiniMax's own examples: an output image costs one token
@@ -146,7 +163,7 @@ export const IMAGE_EXAMPLES = [
 export const CONTEXT_IR_EXAMPLES = [example("text to video prompt", {}, { context_ir_input_tokens: 5664, context_ir_output_tokens: 3426 })];
 export const REGENERATION_EXAMPLES = [
   example("2K 5s", REGENERATION_FACTS, {}),
-  example("2K 10s · 7 images", REGENERATION_FACTS, { seconds: 10, input_images: 7 }),
+  example("2K 10s · 7 images", REGENERATION_FACTS, { seconds: 10, input_images: 7, billable_input_images: 2 }),
   example("2K 5s · input video", REGENERATION_FACTS, { input_video_seconds: 15 }),
 ];
 export const MUSIC_EXAMPLES = [example("one song", {}, { music_tracks: 1 })];
@@ -162,7 +179,7 @@ export const meta = {
     "en": "MiniMax text, speech, transcription, H3 video, H3-Image and music on one channel",
     "zh": "一个渠道接入 MiniMax 文本、语音合成、语音识别、H3 视频、H3-Image 图片与音乐"
   },
-  "version": "2.0.2",
+  "version": "2.1.0",
   "author": {
     "name": "ByAiden",
     "url": "https://github.com/ByAiden"
@@ -229,6 +246,14 @@ export const meta = {
       "description": {
         "en": "Input image unit price",
         "zh": "输入图片单价"
+      }
+    },
+    "billable_input_images": {
+      "type": "number",
+      "unit": "count",
+      "description": {
+        "en": "Billable input image unit price",
+        "zh": "计费输入图片单价"
       }
     },
     "input_video_seconds": {
@@ -303,6 +328,7 @@ export const meta = {
         "seconds": 5,
         "resolution": "768P",
         "input_images": 0,
+        "billable_input_images": 0,
         "input_video_seconds": 0,
         "image_input_text_tokens": 0,
         "image_input_image_tokens": 0,
@@ -319,6 +345,7 @@ export const meta = {
         "seconds": 0,
         "resolution": "768P",
         "input_images": 0,
+        "billable_input_images": 0,
         "input_video_seconds": 0,
         "image_input_text_tokens": 3200,
         "image_input_image_tokens": 0,
@@ -335,6 +362,7 @@ export const meta = {
         "seconds": 0,
         "resolution": "768P",
         "input_images": 0,
+        "billable_input_images": 0,
         "input_video_seconds": 0,
         "image_input_text_tokens": 0,
         "image_input_image_tokens": 0,
@@ -351,6 +379,7 @@ export const meta = {
         "seconds": 0,
         "resolution": "768P",
         "input_images": 0,
+        "billable_input_images": 0,
         "input_video_seconds": 0,
         "image_input_text_tokens": 0,
         "image_input_image_tokens": 0,
@@ -394,6 +423,14 @@ export const meta = {
             "zh": "输入图片单价"
           }
         },
+        "billable_input_images": {
+          "type": "number",
+          "unit": "count",
+          "description": {
+            "en": "Billable input image unit price",
+            "zh": "计费输入图片单价"
+          }
+        },
         "input_video_seconds": {
           "type": "number",
           "unit": "second",
@@ -410,6 +447,7 @@ export const meta = {
             "seconds": 5,
             "resolution": "768P",
             "input_images": 0,
+            "billable_input_images": 0,
             "input_video_seconds": 0
           }
         },
@@ -419,6 +457,7 @@ export const meta = {
             "seconds": 5,
             "resolution": "2K",
             "input_images": 0,
+            "billable_input_images": 0,
             "input_video_seconds": 0
           }
         },
@@ -428,6 +467,7 @@ export const meta = {
             "seconds": 5,
             "resolution": "2K",
             "input_images": 9,
+            "billable_input_images": 4,
             "input_video_seconds": 0
           }
         },
@@ -437,6 +477,7 @@ export const meta = {
             "seconds": 5,
             "resolution": "2K",
             "input_images": 0,
+            "billable_input_images": 0,
             "input_video_seconds": 15
           }
         }
@@ -445,7 +486,97 @@ export const meta = {
     {
       "models": [
         "MiniMax-H3-Highspeed",
-        "MiniMax-H3-Lite",
+        "MiniMax-H3-Lite"
+      ],
+      "schema": {
+        "seconds": {
+          "type": "number",
+          "unit": "second",
+          "description": {
+            "en": "Video generation unit price",
+            "zh": "视频生成单价"
+          }
+        },
+        "resolution": {
+          "enum": [
+            "480P",
+            "768P"
+          ],
+          "description": {
+            "en": "Output video resolution",
+            "zh": "输出视频分辨率"
+          }
+        },
+        "input_images": {
+          "type": "number",
+          "unit": "count",
+          "description": {
+            "en": "Input image unit price",
+            "zh": "输入图片单价"
+          }
+        },
+        "billable_input_images": {
+          "type": "number",
+          "unit": "count",
+          "description": {
+            "en": "Billable input image unit price",
+            "zh": "计费输入图片单价"
+          }
+        },
+        "input_video_seconds": {
+          "type": "number",
+          "unit": "second",
+          "description": {
+            "en": "Input video unit price",
+            "zh": "输入视频单价"
+          }
+        }
+      },
+      "examples": [
+        {
+          "label": "480P 5s",
+          "facts": {
+            "seconds": 5,
+            "resolution": "480P",
+            "input_images": 0,
+            "billable_input_images": 0,
+            "input_video_seconds": 0
+          }
+        },
+        {
+          "label": "768P 5s",
+          "facts": {
+            "seconds": 5,
+            "resolution": "768P",
+            "input_images": 0,
+            "billable_input_images": 0,
+            "input_video_seconds": 0
+          }
+        },
+        {
+          "label": "768P 10s · 9 images",
+          "facts": {
+            "seconds": 10,
+            "resolution": "768P",
+            "input_images": 9,
+            "billable_input_images": 4,
+            "input_video_seconds": 0
+          }
+        },
+        {
+          "label": "768P 5s · input video",
+          "facts": {
+            "seconds": 5,
+            "resolution": "768P",
+            "input_images": 0,
+            "billable_input_images": 0,
+            "input_video_seconds": 15
+          }
+        }
+      ]
+    },
+    {
+      "models": [
         "MiniMax-H3-Max"
       ],
       "schema": {
@@ -475,6 +606,14 @@ export const meta = {
             "zh": "输入图片单价"
           }
         },
+        "billable_input_images": {
+          "type": "number",
+          "unit": "count",
+          "description": {
+            "en": "Billable input image unit price",
+            "zh": "计费输入图片单价"
+          }
+        },
         "input_video_seconds": {
           "type": "number",
           "unit": "second",
@@ -491,6 +630,7 @@ export const meta = {
             "seconds": 5,
             "resolution": "480P",
             "input_images": 0,
+            "billable_input_images": 0,
             "input_video_seconds": 0
           }
         },
@@ -500,6 +640,7 @@ export const meta = {
             "seconds": 5,
             "resolution": "768P",
             "input_images": 0,
+            "billable_input_images": 0,
             "input_video_seconds": 0
           }
         },
@@ -509,6 +650,7 @@ export const meta = {
             "seconds": 10,
             "resolution": "768P",
             "input_images": 9,
+            "billable_input_images": 7,
             "input_video_seconds": 0
           }
         },
@@ -518,6 +660,7 @@ export const meta = {
             "seconds": 5,
             "resolution": "768P",
             "input_images": 0,
+            "billable_input_images": 0,
             "input_video_seconds": 15
           }
         }
@@ -576,6 +719,14 @@ export const meta = {
             "zh": "输入图片单价"
           }
         },
+        "billable_input_images": {
+          "type": "number",
+          "unit": "count",
+          "description": {
+            "en": "Billable input image unit price",
+            "zh": "计费输入图片单价"
+          }
+        },
         "input_video_seconds": {
           "type": "number",
           "unit": "second",
@@ -591,6 +742,7 @@ export const meta = {
           "facts": {
             "seconds": 5,
             "input_images": 0,
+            "billable_input_images": 0,
             "input_video_seconds": 0
           }
         },
@@ -599,6 +751,7 @@ export const meta = {
           "facts": {
             "seconds": 10,
             "input_images": 7,
+            "billable_input_images": 2,
             "input_video_seconds": 0
           }
         },
@@ -607,6 +760,7 @@ export const meta = {
           "facts": {
             "seconds": 5,
             "input_images": 0,
+            "billable_input_images": 0,
             "input_video_seconds": 15
           }
         }
@@ -871,6 +1025,32 @@ export const meta = {
   "channelConfig": {
     "type": "object",
     "properties": {
+      "upstreamType": {
+        "type": "string",
+        "title": {
+          "en": "Upstream type",
+          "zh": "上游类型"
+        },
+        "description": {
+          "en": "MiniMax API: the Base URL is MiniMax's (blank = https://api.minimaxi.com; https://api.minimax.io for the international site). OpenAI-compatible relay: the Base URL is a relay that speaks OpenAI's API; text, speech, transcription and image generation go there, video, music and the other MiniMax task endpoints are refused.",
+          "zh": "MiniMax 官方 API：Base URL 为 MiniMax 地址（留空即 https://api.minimaxi.com，国际站填 https://api.minimax.io）。OpenAI 兼容中转：Base URL 填兼容 OpenAI 接口的中转地址，文本、语音合成、语音识别和图片生成发往该地址，视频、音乐等 MiniMax 任务接口会被拒绝。"
+        },
+        "enum": [
+          "minimax",
+          "openai"
+        ],
+        "enumTitles": [
+          {
+            "en": "MiniMax API",
+            "zh": "MiniMax 官方 API"
+          },
+          {
+            "en": "OpenAI-compatible relay",
+            "zh": "OpenAI 兼容中转"
+          }
+        ],
+        "default": "minimax"
+      },
       "defaultVoice": {
         "type": "string",
         "title": {
@@ -888,8 +1068,8 @@ export const meta = {
     }
   },
   "keyHint": {
-    "en": "MiniMax API key of the site the Base URL points to",
-    "zh": "MiniMax API Key，与 Base URL 所在站点对应"
+    "en": "MiniMax API key of the site the Base URL points to, or the relay's key when Upstream type is OpenAI-compatible relay",
+    "zh": "MiniMax API Key，与 Base URL 所在站点对应；上游类型为 OpenAI 兼容中转时填中转的 Key"
   }
 };
 
@@ -922,6 +1102,32 @@ function viaGateway(ctx) {
 
 function apiRoot(ctx) {
   return ctx.baseUrl + (viaGateway(ctx) ? "/" + PLUGIN_KEY : "");
+}
+
+// The channel setting: MiniMax's own API, or an OpenAI-compatible relay.
+export function upstreamType(ctx) {
+  const config = plainObject(ctx && ctx.config) || {};
+  return config.upstreamType === "openai" ? "openai" : "minimax";
+}
+
+// A task sent to an OpenAI-compatible relay (another New API gateway that
+// forwards on its New API channel keeps MiniMax's wire format).
+function relayMode(ctx) {
+  return !viaGateway(ctx || {}) && upstreamType(ctx) === "openai";
+}
+
+function relayRoot(ctx) {
+  return String(ctx.baseUrl || "").replace(/\/+$/, "");
+}
+
+// The input images MiniMax charges: those beyond the model's free allowance.
+function billableImages(images, free) {
+  return Math.max(Number(images) - free, 0);
+}
+
+function withBillableImages(facts, free) {
+  if (!facts || facts.input_images === undefined) return facts;
+  return Object.assign({}, facts, { billable_input_images: billableImages(facts.input_images, free) });
 }
 
 function authHeaders(ctx) {
@@ -1675,14 +1881,17 @@ function mediaUsage(ctx) {
     return facts;
   }
   if (ctx.usagePurpose === "billing_ratios") return null;
-  const h3 = h3Request(req, videoProfile(ctx.upstreamModel, ctx.model, req.model));
+  const profile = videoProfile(ctx.upstreamModel, ctx.model, req.model);
+  const h3 = h3Request(req, profile);
   const content = h3.content;
+  const images = content.filter(function (item) {
+    return item && item.type === "image_url";
+  }).length;
   return {
     seconds: h3.duration,
     resolution: h3.resolution,
-    input_images: content.filter(function (item) {
-      return item && item.type === "image_url";
-    }).length,
+    input_images: images,
+    billable_input_images: billableImages(images, profile.freeImages),
     // Input URLs do not expose duration. Reserve the documented total limit;
     // polling replaces it with usage.input_seconds after success.
     input_video_seconds: content.some(function (item) {
@@ -1758,7 +1967,10 @@ export function listArtifacts(task) {
 
 
 function mediaUsageOnComplete(task, taskResult, body) {
-  if (imageTask(task)) return imageUsage(body);
+  if (imageTask(task)) {
+    const state = relayImageState(task, taskResult);
+    return state ? relayImageUsage(body, state) : imageUsage(body);
+  }
   const h3Task = h3QueryTask(body);
   if (!h3Task) return null;
   const profile = videoProfile(task.upstreamModel, task.model);
@@ -1779,7 +1991,40 @@ function mediaUsageOnComplete(task, taskResult, body) {
     if (!Number.isFinite(value) || value < field.minimum || value > field.maximum || (field.integer && !Number.isInteger(value))) continue;
     facts[field.key] = value;
   }
+  if (facts.input_images !== undefined) facts.billable_input_images = billableImages(facts.input_images, profile.freeImages);
   return Object.keys(facts).length ? facts : null;
+}
+
+// The state an image request sent to an OpenAI-compatible relay keeps: the
+// facts of one image, as reserved.
+function relayImageState(task, taskResult) {
+  const state = plainObject(task && task.state) || plainObject(taskResult && taskResult.plugin_state) || null;
+  return state && state.relay === true && plainObject(state.perImage) ? state : null;
+}
+
+// A relay's OpenAI image usage: input tokens (text and image) and output
+// tokens. Facts it does not report are those of the delivered images at the
+// request's estimate per image.
+function relayImageUsage(body, state) {
+  const usage = plainObject(plainObject(body) ? body.usage : null) || {};
+  const input = plainObject(usage.input_tokens_details) || {};
+  const output = plainObject(usage.output_tokens_details) || {};
+  const delivered = Math.min(deliveredImages(body).length, IMAGE_MAX_COUNT);
+  const inputTokens = usageNumber(usage.input_tokens);
+  const imageIn = usageNumber(input.image_tokens);
+  let text = usageNumber(input.text_tokens);
+  if (text === undefined && inputTokens !== undefined) text = Math.max(inputTokens - (imageIn || 0), 0);
+  let out = usageNumber(output.image_tokens);
+  if (out === undefined) out = usageNumber(usage.output_tokens);
+  const reported = { image_input_text_tokens: text, image_input_image_tokens: imageIn === undefined && text !== undefined ? 0 : imageIn, image_output_tokens: out };
+  const facts = {};
+  for (const key of Object.keys(reported)) {
+    const value = reported[key] !== undefined ? reported[key] : usageNumber(state.perImage[key]) !== undefined ? usageNumber(state.perImage[key]) * delivered : undefined;
+    if (value !== undefined) facts[key] = value;
+  }
+  const count = usageNumber(usage.generated_images);
+  facts.image_count = count !== undefined && count <= IMAGE_MAX_COUNT ? count : delivered;
+  return facts;
 }
 
 export const protocols = {
@@ -2156,8 +2401,8 @@ function regenerationUsage(task) {
 // The facts of a request that costs nothing, complete for the model's profile.
 function zeroFacts(model) {
   if (model === CONTEXT_IR_MODEL) return { context_ir_input_tokens: 0, context_ir_output_tokens: 0 };
-  if (model === REGENERATION_MODEL) return { seconds: 0, input_images: 0, input_video_seconds: 0 };
-  return { seconds: 0, resolution: videoProfile(model).resolutions[0], input_images: 0, input_video_seconds: 0 };
+  if (model === REGENERATION_MODEL) return { seconds: 0, input_images: 0, billable_input_images: 0, input_video_seconds: 0 };
+  return { seconds: 0, resolution: videoProfile(model).resolutions[0], input_images: 0, billable_input_images: 0, input_video_seconds: 0 };
 }
 
 function cancelModel(name) {
@@ -2315,7 +2560,40 @@ export const native = Object.assign({}, mediaNative, {
 // ---------------------------------------------------------------------------
 // Driver hooks
 
+// What a channel of the OpenAI-compatible relay upstream type refuses, by
+// task kind: only image generation has an OpenAI endpoint that keeps billing.
+const RELAY_REFUSED = {
+  cancel: "Task cancel and delete",
+  context_ir: "H3-Context-IR",
+  regeneration: "Video regeneration",
+  image_prompt: "H3-Image-Context-IR prompt enhancement",
+  music: "Music generation",
+};
+
+function relayRefusal(ctx) {
+  const kind = taskKind(ctx);
+  let what = RELAY_REFUSED[kind];
+  if (!what && kind === "media") {
+    if (!imageTask(ctx)) what = "Video generation";
+    else if (imageOperation(ctx.requestBody || {}) === "edit") what = "Image editing";
+  }
+  if (!what) return "";
+  return what + " is not available on this channel: its upstream type is OpenAI-compatible relay, which serves text, speech, transcription and image generation only. Use a channel with upstream type MiniMax API.";
+}
+
+// Image generation on an OpenAI-compatible relay: its /v1/images/generations
+// with the request's fields and the upstream model name.
+function relaySubmitRequest(ctx) {
+  const refusal = relayRefusal(ctx);
+  if (refusal) fail(refusal);
+  const req = ctx.requestBody || {};
+  const body = Object.assign({}, req.imageBody || {}, { model: ctx.upstreamModel || ctx.model });
+  const checked = checkImageBody("generate", body);
+  return { url: relayRoot(ctx) + "/v1/images/generations", method: "POST", headers: authHeaders(ctx), body: body, action: checked.action };
+}
+
 export function buildSubmitRequest(ctx) {
+  if (relayMode(ctx)) return relaySubmitRequest(ctx);
   const req = ctx.requestBody || {};
   const kind = taskKind(ctx);
   if (kind === "cancel") {
@@ -2391,12 +2669,28 @@ export function parseSubmitResponse(ctx, resp) {
     if (!audio) fail("MiniMax returned no audio");
     return immediate(ctx, body, /^https?:\/\//i.test(audio) ? audio : "");
   }
-  return mediaSubmitResponse(ctx, resp);
+  const result = mediaSubmitResponse(ctx, resp);
+  // A relay's reply may lack MiniMax's usage; settlement then counts the
+  // delivered images at the estimate of one.
+  if (relayMode(ctx) && imageTask(ctx)) {
+    const facts = checkImageBody("generate", Object.assign({}, (ctx.requestBody || {}).imageBody || {})).facts;
+    const count = facts.image_count || 1;
+    result.state = {
+      relay: true,
+      perImage: { image_input_text_tokens: facts.image_input_text_tokens / count, image_input_image_tokens: facts.image_input_image_tokens / count, image_output_tokens: facts.image_output_tokens / count },
+    };
+  }
+  return result;
 }
 
 export function extractUsage(ctx) {
   const req = ctx.requestBody || {};
   const kind = taskKind(ctx);
+  // Refused before anything is reserved.
+  if (relayMode(ctx)) {
+    const refusal = relayRefusal(ctx);
+    if (refusal) fail(refusal);
+  }
   if (kind === "cancel") {
     if (ctx.usagePurpose === "billing_ratios") return { seconds: 0 };
     return zeroFacts(trimmed(ctx.upstreamModel) || trimmed(ctx.model) || trimmed(req.model));
@@ -2407,7 +2701,7 @@ export function extractUsage(ctx) {
   }
   if (kind === "regeneration") {
     if (ctx.usagePurpose === "billing_ratios") return null;
-    return regenerationFacts(ctx);
+    return withBillableImages(regenerationFacts(ctx), REGENERATION_FREE_IMAGES);
   }
   if (kind === "image_prompt") {
     if (ctx.usagePurpose === "billing_ratios") return null;
@@ -2435,7 +2729,7 @@ export function extractUsageOnComplete(task, taskResult, body) {
   const h3Task = h3QueryTask(body);
   const type = trimmed(h3Task && h3Task.task_type);
   if (kind === "context_ir" || type === "h3_context_ir") return h3Task ? contextIRUsage(h3Task) : null;
-  if (kind === "regeneration" || type === "regeneration") return h3Task ? regenerationUsage(h3Task) : null;
+  if (kind === "regeneration" || type === "regeneration") return h3Task ? withBillableImages(regenerationUsage(h3Task), REGENERATION_FREE_IMAGES) : null;
   return mediaUsageOnComplete(task, taskResult, body);
 }
 
@@ -2539,15 +2833,15 @@ function parseJSON(text) {
 // HTTP statuses for MiniMax's business codes on HTTP 200 replies.
 const CODE_STATUS = { 1002: 429, 1004: 401, 1008: 402, 1026: 422, 1027: 422, 1039: 429, 1041: 429, 2013: 400, 2014: 400, 2022: 404, 2049: 401, 2053: 402, 2056: 429, 2061: 403, 2062: 429, 2067: 402, 2068: 403, 2069: 404 };
 
-function upstreamError(parsed, status) {
+function upstreamError(parsed, status, label) {
   const body = plainObject(parsed) || {};
   const error = plainObject(body.error);
   const base = plainObject(body.base_resp);
-  const message = (error && trimmed(error.message)) || (base && trimmed(base.status_msg) ? trimmed(base.status_msg) + " (" + base.status_code + ")" : "") || "MiniMax request failed";
+  const message = (error && trimmed(error.message)) || (base && trimmed(base.status_msg) ? trimmed(base.status_msg) + " (" + base.status_code + ")" : "") || (label ? "request failed" : "MiniMax request failed");
   const code = base && present(base.status_code) ? Number(base.status_code) : 0;
   let http = status >= 400 && status <= 599 ? status : CODE_STATUS[code] || (code ? 400 : 502);
   if (error && Number(error.http_code) >= 400 && Number(error.http_code) <= 599) http = Number(error.http_code);
-  return convertError(http, "MiniMax: " + message, code || (error && error.type) || undefined);
+  return convertError(http, (label || "MiniMax") + ": " + message, code || (error && error.type) || undefined);
 }
 
 export function buildSpeechRequest(body, model, config) {
@@ -2638,30 +2932,109 @@ export function transcriptionReply(parsed, state) {
 }
 
 // MiniMax's model list has its text models only; the plugin's media models
-// are added, since the same key calls them.
-export function modelListReply(response) {
+// are added, since the same key calls them. A relay's list is kept as is.
+export function modelListReply(response, relay) {
   const parsed = typeof response.body === "string" ? parseJSON(response.body) : null;
-  if (!plainObject(parsed) || !Array.isArray(parsed.data)) return convertError(502, "MiniMax returned an unreadable model list");
+  if (!plainObject(parsed) || !Array.isArray(parsed.data)) return convertError(502, (relay ? "the relay" : "MiniMax") + " returned an unreadable model list");
   const ids = [];
+  const owners = {};
   for (const item of parsed.data) {
     const id = plainObject(item) && typeof item.id === "string" ? item.id.trim() : "";
-    if (id && ids.indexOf(id) < 0) ids.push(id);
+    if (id && ids.indexOf(id) < 0) {
+      ids.push(id);
+      if (typeof item.owned_by === "string" && item.owned_by.trim()) owners[id] = item.owned_by.trim();
+    }
   }
-  for (const id of MEDIA_MODELS) if (ids.indexOf(id) < 0) ids.push(id);
+  if (!relay) for (const id of MEDIA_MODELS) if (ids.indexOf(id) < 0) ids.push(id);
   return {
     body: {
       object: "list",
       data: ids.map(function (id) {
-        return { id: id, object: "model", owned_by: "minimax" };
+        return { id: id, object: "model", owned_by: relay ? owners[id] || "openai-compatible" : "minimax" };
       }),
     },
     contentType: "application/json",
   };
 }
 
+// A relay's OpenAI transcription: billed by the audio seconds it reports
+// (usage.seconds, or duration in verbose_json), else passed on as it came.
+export function relayTranscriptionReply(parsed, text, response) {
+  const object = plainObject(parsed);
+  const usage = object ? plainObject(object.usage) : null;
+  const raw = Number(usage && present(usage.seconds) ? usage.seconds : object ? object.duration : NaN);
+  if (!object || !(raw > 0)) {
+    const headers = (response && response.headers) || {};
+    const type = headers["Content-Type"] || headers["content-type"] || "";
+    return type ? { body: text, contentType: type } : { body: text };
+  }
+  const seconds = Math.ceil(raw);
+  const reply = Object.assign({}, object);
+  reply.usage = { type: "tokens", input_tokens: seconds, output_tokens: 0, total_tokens: seconds, prompt_tokens: seconds, completion_tokens: 0, seconds: seconds };
+  return { body: reply };
+}
+
+// Anthropic Messages on a relay: its own /v1/messages instead of MiniMax's
+// /anthropic path. Everything else goes where the route says.
+export function prepareRequest(ctx, request) {
+  if (upstreamType(ctx) === "openai" && ctx.path === "/v1/messages") return { path: "/v1/messages" };
+  return null;
+}
+
+// A relay channel needs the relay's address: a blank Base URL would send the
+// relay's key to MiniMax.
+const MINIMAX_HOSTS = ["api.minimaxi.com", "api.minimax.io", "api.minimax.chat"];
+
+export function checkKey(ctx, key) {
+  if (upstreamType(ctx) !== "openai") return undefined;
+  const match = /^https?:\/\/([^/:?#]+)/i.exec(trimmed(ctx && ctx.baseUrl));
+  const host = match ? match[1].toLowerCase() : "";
+  if (!host || MINIMAX_HOSTS.indexOf(host) >= 0) {
+    return {
+      error: {
+        en: "Upstream type is OpenAI-compatible relay: set the channel Base URL to the relay's address, not MiniMax's.",
+        zh: "上游类型为 OpenAI 兼容中转：请把渠道 Base URL 设为中转地址，而不是 MiniMax 官方地址。",
+      },
+    };
+  }
+  return undefined;
+}
+
+function relaySpeechRequest(request, model) {
+  const body = plainObject(request.body);
+  if (!body) fail("A JSON body is required.");
+  if (typeof body.input !== "string" || !body.input.trim()) fail("input is required");
+  const out = Object.assign({}, body, { model: model });
+  const clientStream = request.stream === true || body.stream_format === "sse";
+  const format = typeof body.response_format === "string" && body.response_format ? body.response_format.toLowerCase() : "mp3";
+  return { path: SPEECH_PATH, method: "POST", body: out, stream: clientStream, state: { kind: "speech", relay: true, format: format, clientStream: clientStream } };
+}
+
+function relayTranscriptionRequest(request, model) {
+  const form = request.form;
+  if (!form || !plainObject(form.fields) || !Array.isArray(form.files)) fail("A multipart form with a file is required.");
+  const fields = Object.assign({}, form.fields, { model: model });
+  return {
+    path: TRANSCRIPTION_PATH,
+    method: "POST",
+    form: {
+      fields: fields,
+      files: form.files.map(function (file) {
+        return { field: file.field.replace(/#\d+$/, ""), from: file.field };
+      }),
+    },
+    stream: false,
+    state: { kind: "transcription", relay: true },
+  };
+}
+
 export function convertRequest(ctx, request) {
   const model = trimmed(request && request.model) || trimmed(request && request.body && request.body.model);
   if (!model) fail("model is required");
+  if (upstreamType(ctx) === "openai") {
+    if (ctx.path === SPEECH_PATH) return relaySpeechRequest(request, model);
+    if (ctx.path === TRANSCRIPTION_PATH) return relayTranscriptionRequest(request, model);
+  }
   if (ctx.path === SPEECH_PATH) {
     const built = buildSpeechRequest(request.body, model, ctx.config);
     const clientStream = request.stream === true || (plainObject(request.body) && request.body.stream_format === "sse");
@@ -2719,9 +3092,24 @@ export function convertResponse(ctx, response) {
   const status = response.status;
   const text = response.body !== undefined ? response.body : "";
   const parsed = typeof text === "string" ? parseJSON(text) : null;
+  const relay = upstreamType(ctx) === "openai";
   if (ctx.path === MODELS_PATH) {
-    if (status < 200 || status >= 300) return upstreamError(parsed, status);
-    return modelListReply(response);
+    if (status < 200 || status >= 300) return upstreamError(parsed, status, relay ? "Relay" : "MiniMax");
+    return modelListReply(response, relay);
+  }
+  if (state.relay) {
+    if (status < 200 || status >= 300) return upstreamError(parsed, status, "Relay");
+    if (state.kind === "transcription") return relayTranscriptionReply(parsed, typeof text === "string" ? text : "", response);
+    if (state.kind === "speech") {
+      if (state.clientStream) return convertError(502, "the relay answered a streamed speech request without a stream");
+      if (typeof response.bodyBase64 !== "string" || !response.bodyBase64) {
+        if (plainObject(parsed) && plainObject(parsed.error)) return upstreamError(parsed, 502, "Relay");
+        return convertError(502, "the relay answered speech without audio");
+      }
+      const headers = response.headers || {};
+      return { bodyBase64: response.bodyBase64, contentType: headers["Content-Type"] || headers["content-type"] || SPEECH_FORMATS[state.format] || "application/octet-stream" };
+    }
+    return convertError(502, "unexpected relay reply");
   }
   if (status < 200 || status >= 300) return upstreamError(parsed, status);
   if (baseRespError(parsed)) return upstreamError(parsed, 0);
@@ -2740,7 +3128,20 @@ export function convertResponse(ctx, response) {
   return convertError(502, "unexpected MiniMax reply");
 }
 
+// A relay's OpenAI speech events, passed on as they came.
+function relaySpeechEvent(input) {
+  if (!input || input.done) return {};
+  if (input.dataBase64 !== undefined) return { chunks: [{ bodyBase64: input.dataBase64 }] };
+  const data = String(input.data === undefined ? "" : input.data);
+  const parsed = data.trim() ? parseJSON(data) : null;
+  if (plainObject(parsed) && plainObject(parsed.error)) return upstreamError(parsed, 0, "Relay");
+  const event = { data: data };
+  if (input.event) event.event = input.event;
+  return { events: [event] };
+}
+
 export function convertStreamEvent(ctx, input) {
+  if (plainObject(ctx.state) && ctx.state.relay) return relaySpeechEvent(input);
   const state = Object.assign({ chunks: 0, characters: 0 }, ctx.state || {});
   if (input && input.done) {
     if (!state.chunks) return convertError(502, "MiniMax returned no audio");

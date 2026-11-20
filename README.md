@@ -17,6 +17,8 @@ Serves the MiniMax API from ONE new-api channel with one MiniMax API key:
 - Images: `MiniMax-H3-Image` and `MiniMax-H3-Image-Highspeed` generation and editing, and H3-Image-Context-IR (prompt enhancement on its own).
 - Music: `music-3.0`, `music-2.6` and `music-cover`.
 
+A channel can instead point at an OpenAI-compatible relay for text, speech, transcription and image generation (see Upstream type).
+
 Requires new-api v1.0.0-rc.50 or later (plugins with a provider part). The plugin key is `byaiden_minimax`. The older Hailuo 2.3, 02 and 01 video models stay with the official `hailuo` plugin.
 
 ## Channel setup
@@ -33,8 +35,29 @@ Requires new-api v1.0.0-rc.50 or later (plugins with a provider part). The plugi
 3. Fetch models lists the text models MiniMax returns for the key plus every speech, transcription, video, image and music model of this plugin (MiniMax's list has text models only). A model your key cannot use answers with MiniMax's own error; remove it from the channel.
 4. Default voice (channel setting): the MiniMax voice ID used when a speech request names an OpenAI voice (`alloy`, `nova` and the others) or none. Default `English_Graceful_Lady`. MiniMax's system voice list has the others.
 5. Set prices (see Billing). The channel test button sends a chat request; pick a text model as the test model.
+6. Upstream type (channel setting): `MiniMax API`, the default, for everything above; `OpenAI-compatible relay` for a relay (see below).
 
 Upgrading from 1.x keeps the key, the video and image endpoints and their billing facts; existing channels keep working. Add the new models to a channel (Fetch models, or type them) to offer them.
+
+## Upstream type: OpenAI-compatible relay
+
+The channel setting **Upstream type** picks where the channel's requests go:
+
+- `MiniMax API` (default): MiniMax's own API at the Base URL above. Everything else in this README describes this type.
+- `OpenAI-compatible relay`: the Base URL is the root of a relay that speaks OpenAI's API (leave `/v1` off), and the key is the relay's key, sent as `Authorization: Bearer`. Saving the channel fails while its Base URL is empty or one of MiniMax's.
+
+On a relay channel:
+
+| Request | Sent to the relay's | Billed from |
+| --- | --- | --- |
+| Chat Completions, Responses | `/v1/chat/completions`, `/v1/responses`, unchanged, streaming included | the usage the relay reports |
+| Anthropic Messages | `/v1/messages`, unchanged (the relay must serve it) | the usage the relay reports |
+| Speech | `/v1/audio/speech` with the client's body as sent (MiniMax's `metadata` options and the default voice are not applied); `stream_format: "sse"` passes the relay's events on | characters of `input`, as on MiniMax |
+| Transcription | `/v1/audio/transcriptions` with the client's form as sent | the audio seconds the relay reports (`usage.seconds`, or `duration` in `verbose_json`); without them new-api's own estimate |
+| Image generation (`MiniMax-H3-Image`, `MiniMax-H3-Image-Highspeed`) | `/v1/images/generations` with the request's fields | the relay's OpenAI image usage (input text and image tokens, output tokens) on the same facts and expressions as below; a fact the relay does not report counts each delivered image at the request's estimate |
+| Fetch models | `/v1/models` | the relay's list as it is |
+
+Model names go out as the channel maps them; nothing is rewritten. Video (OpenAI videos, Responses video and `/v2`), H3-Context-IR, regeneration, cancel and delete, image editing, H3-Image-Context-IR and music have no OpenAI endpoint that keeps their billing: on a relay channel they fail with an error that names the upstream type, before anything is reserved. Serve them from a channel with upstream type MiniMax API. A Responses video request gets the gateway's generic 400 "Invalid task protocol request" instead of that message (the gateway does not pass hook messages on for that protocol); it is not billed either. A New API channel (type 60, see below) ignores this setting.
 
 ## Models and endpoints
 
@@ -119,19 +142,20 @@ Video, Context-IR, regeneration, images and music are billed as tasks from these
 
 | Model | Expression (CNY list price numbers) |
 | --- | --- |
-| `MiniMax-H3` | `u("resolution") == "2K" ? tier("2K", u("seconds") * 0.8 + u("input_video_seconds") * 0.8 + max(u("input_images") - 5, 0) * 0.2) : tier("768P", u("seconds") * 0.5 + u("input_video_seconds") * 0.5 + max(u("input_images") - 5, 0) * 0.2)` |
-| `MiniMax-H3-Highspeed` | `u("resolution") == "768P" ? tier("768P", u("seconds") * 0.4 + u("input_video_seconds") * 0.4 + max(u("input_images") - 5, 0) * 0.2) : tier("480P", u("seconds") * 0.26 + u("input_video_seconds") * 0.26 + max(u("input_images") - 5, 0) * 0.2)` |
-| `MiniMax-H3-Lite` | `u("resolution") == "768P" ? tier("768P", u("seconds") * 0.26 + u("input_video_seconds") * 0.26 + max(u("input_images") - 5, 0) * 0.13) : tier("480P", u("seconds") * 0.16 + u("input_video_seconds") * 0.16 + max(u("input_images") - 5, 0) * 0.13)` |
-| `MiniMax-H3-Max` | `u("resolution") == "768P" ? tier("768P", u("seconds") * 0.5 + u("input_video_seconds") * 0.97 + max(u("input_images") - 2, 0) * 0.5) : tier("480P", u("seconds") * 0.33 + u("input_video_seconds") * 0.37 + max(u("input_images") - 2, 0) * 0.5)` |
+| `MiniMax-H3` | `u("resolution") == "2K" ? tier("2K", u("seconds") * 0.8 + u("input_video_seconds") * 0.8 + u("billable_input_images") * 0.2) : tier("768P", u("seconds") * 0.5 + u("input_video_seconds") * 0.5 + u("billable_input_images") * 0.2)` |
+| `MiniMax-H3-Highspeed` | `u("resolution") == "768P" ? tier("768P", u("seconds") * 0.4 + u("input_video_seconds") * 0.4 + u("billable_input_images") * 0.2) : tier("480P", u("seconds") * 0.26 + u("input_video_seconds") * 0.26 + u("billable_input_images") * 0.2)` |
+| `MiniMax-H3-Lite` | `u("resolution") == "768P" ? tier("768P", u("seconds") * 0.26 + u("input_video_seconds") * 0.26 + u("billable_input_images") * 0.13) : tier("480P", u("seconds") * 0.16 + u("input_video_seconds") * 0.16 + u("billable_input_images") * 0.13)` |
+| `MiniMax-H3-Max` | `u("resolution") == "768P" ? tier("768P", u("seconds") * 0.5 + u("input_video_seconds") * 0.97 + u("billable_input_images") * 0.5) : tier("480P", u("seconds") * 0.33 + u("input_video_seconds") * 0.37 + u("billable_input_images") * 0.5)` |
 | `MiniMax-H3-Context-IR` | `tier("base", u("context_ir_input_tokens") * 5.8 / 1000000 + u("context_ir_output_tokens") * 23 / 1000000)` |
-| `MiniMax-H3-Regeneration` | `tier("base", u("seconds") * 0.3 + u("input_video_seconds") * 0.3 + max(u("input_images") - 5, 0) * 0.15)` |
+| `MiniMax-H3-Regeneration` | `tier("base", u("seconds") * 0.3 + u("input_video_seconds") * 0.3 + u("billable_input_images") * 0.15)` |
 | `MiniMax-H3-Image` | `tier("base", u("image_input_text_tokens") * 15 / 1000000 + u("image_input_image_tokens") * 10 / 1000000 + u("image_output_tokens") * 25 / 1000000)` |
 | `MiniMax-H3-Image-Highspeed` | `tier("base", u("image_input_text_tokens") * 15 / 1000000 + u("image_input_image_tokens") * 20 / 1000000 + u("image_output_tokens") * 50 / 1000000)` |
 | `music-3.0`, `music-2.6`, `music-cover` | `tier("base", u("music_tracks") * 1)` |
 
-- Video: `seconds` and `resolution` of the output, `input_images` (MiniMax charges only the images beyond the first 5, the first 2 on `MiniMax-H3-Max`, hence `max(... - 5, 0)`; the gateway cannot turn `max(...)` into a price table, so model pages show these video expressions as raw expressions while billing them exactly), `input_video_seconds` (held at 15 seconds until MiniMax reports the length). A request without a duration counts 5 seconds, or 15 on MiniMax's own path; without a resolution, `768P`, or the model's dearest on MiniMax's own path.
+- Video: `seconds` and `resolution` of the output, `billable_input_images` (the input images MiniMax charges: those beyond the first 5, beyond the first 2 on `MiniMax-H3-Max`; the plugin works it out from the upstream model's allowance at submit and again from the image count MiniMax reports), `input_video_seconds` (held at 15 seconds until MiniMax reports the length). A request without a duration counts 5 seconds, or 15 on MiniMax's own path; without a resolution, `768P`, or the model's dearest on MiniMax's own path.
+- `input_images` (every input image) is still reported, so 2.0 expressions with `max(u("input_images") - 5, 0)` keep billing the same amounts; model pages show those as raw expressions, the `billable_input_images` form above as a price table. Saving the new form needs plugin 2.1.0, whose usage schema declares the field. new-api's built-in `hailuo` plugin also declares `MiniMax-H3` without that field, and a model-level price must suit every plugin of the model: save the `MiniMax-H3` expression as this plugin's own price for the model (the per-plugin price in the model's pricing settings; option `billing_setting.plugin_billing_expr`, key `byaiden_minimax::MiniMax-H3`), or keep the 2.0 form as its model-level price. The other models are declared by this plugin only.
 - Context-IR: `context_ir_input_tokens` and `context_ir_output_tokens`, held at 16,384 plus 16,384 per media item and 16,384 output tokens until MiniMax reports them (a short text prompt used about 5,700 and 3,400).
-- Regeneration: the 2K output `seconds` plus the source task's input images and input video, which MiniMax bills again; held at the source task's figures, or 15 seconds when they are unknown.
+- Regeneration: the 2K output `seconds` plus the source task's input images (`billable_input_images`, beyond the first 5) and input video, which MiniMax bills again; held at the source task's figures, or 15 seconds when they are unknown.
 - Images: input text, reference image and output tokens, counted per delivered image, or `image_count` for a per-image price. The request holds an estimate (one output token per 1024 pixels and at least 4096 an image; `auto` sizes count their `area`, 4K by default). Prompt enhancement is billed on `MiniMax-H3-Image` as input text tokens only, which the expression above prices; with a per-image price it costs nothing.
 - Music: `music_tracks` is 1 per delivered song.
 - Cancel and delete requests carry zero facts, so these expressions charge nothing for them; a cancelled queued task is refunded.

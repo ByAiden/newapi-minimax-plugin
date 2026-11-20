@@ -118,5 +118,30 @@ add("transcription bills seconds", "convertResponse", [Object.assign({ state: { 
 const models = { baseUrl: BASE, path: "/v1/models", config: {}, state: null };
 add("model list adds the media models", "convertResponse", [models, { status: 200, headers: {}, body: JSON.stringify({ object: "list", data: [{ id: "MiniMax-M3.1-Flash", object: "model" }] }) }]);
 
+// OpenAI-compatible relay upstream type
+const RELAY = "https://relay.example";
+const relayCfg = { upstreamType: "openai", defaultVoice: "English_Graceful_Lady" };
+const rdrv = (intent, extra) => drv(intent, Object.assign({ baseUrl: RELAY, config: relayCfg }, extra || {}));
+add("relay image goes to the relay's images endpoint", "buildSubmitRequest", [rdrv(image, { upstreamModel: "relay-image" })]);
+add("relay image keeps the estimate of one image", "parseSubmitResponse", [rdrv(image), { statusCode: 200, headers: {}, body: { created: 1, data: [{ url: "https://cdn.relay.example/a.png" }] } }]);
+add("relay image settles on OpenAI usage", "extractUsageOnComplete", [Object.assign(qctx({ action: "text_to_image", model: "MiniMax-H3-Image", upstreamModel: "MiniMax-H3-Image", baseUrl: RELAY, config: relayCfg }), { state: { relay: true, perImage: { image_input_text_tokens: 8197, image_input_image_tokens: 0, image_output_tokens: 16384 } } }), { status: "SUCCESS" }, { data: [{ url: "https://x/a.png" }], usage: { input_tokens: 40, output_tokens: 4096 } }]);
+addError("relay channel refuses video", "buildSubmitRequest", [rdrv(fox)]);
+addError("relay channel refuses video before reserving", "extractUsage", [rdrv(fox)]);
+addError("relay channel refuses music", "buildSubmitRequest", [rdrv(music)]);
+add("another gateway ignores the upstream type", "buildSubmitRequest", [rdrv(fox, { baseUrl: "https://mid.example", upstream: { kind: "new_api" }, authHeader: "Bearer test-key" })]);
+const rspeech = { baseUrl: RELAY, path: "/v1/audio/speech", config: relayCfg };
+add("relay speech passes the OpenAI body", "convertRequest", [rspeech, { model: "speech-2.8-turbo", stream: false, body: { model: "speech-2.8-turbo", input: "Hello", voice: "alloy" } }]);
+add("relay speech bytes pass through", "convertResponse", [Object.assign({ state: { kind: "speech", relay: true, format: "mp3", clientStream: false } }, rspeech), { status: 200, headers: { "Content-Type": "audio/mpeg" }, bodyBase64: "SUQz" }]);
+const rstt = { baseUrl: RELAY, path: "/v1/audio/transcriptions", config: relayCfg };
+add("relay transcription bills its seconds", "convertResponse", [Object.assign({ state: { kind: "transcription", relay: true } }, rstt), { status: 200, headers: {}, body: JSON.stringify({ text: "Hi.", usage: { type: "duration", seconds: 7 } }) }]);
+add("relay model list as it is", "convertResponse", [{ baseUrl: RELAY, path: "/v1/models", config: relayCfg, state: null }, { status: 200, headers: {}, body: JSON.stringify({ object: "list", data: [{ id: "gpt-x", object: "model", owned_by: "relay" }] }) }]);
+add("relay messages path", "prepareRequest", [{ baseUrl: RELAY, path: "/v1/messages", config: relayCfg }, { path: "/v1/messages", upstreamPath: "/anthropic/v1/messages", model: "MiniMax-M3", stream: false, body: {}, headers: {} }]);
+add("relay channel needs the relay's address", "checkKey", [{ baseUrl: "https://api.minimaxi.com", config: relayCfg }, "k"]);
+
+// billable_input_images
+const max9 = p.native.createH3Task(json({ model: "MiniMax-H3-Max", content: [{ type: "text", text: "x" }].concat(Array.from({ length: 9 }, (_, i) => ({ type: "image_url", image_url: { url: "https://img.example/" + i + ".png" }, role: "reference_image" }))), duration: 5, resolution: "768P" }));
+add("H3-Max charges images beyond the first 2", "extractUsage", [drv(max9)]);
+add("settlement recomputes the billable images", "extractUsageOnComplete", [qctx(), { status: "SUCCESS" }, { task: { status: "succeeded", resolution: "768P", usage: { output_seconds: 6, input_image_count: 8, input_seconds: 0 } } }]);
+
 writeFileSync(repo + "/test/golden.json", JSON.stringify({ cases }, null, 2) + "\n");
 console.log(cases.length, "cases");

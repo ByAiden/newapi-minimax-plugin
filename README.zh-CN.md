@@ -15,6 +15,8 @@ locale: zh-CN
 - 图片：`MiniMax-H3-Image`、`MiniMax-H3-Image-Highspeed` 的生成和编辑，以及单独的 H3-Image-Context-IR（提示词增强）。
 - 音乐：`music-3.0`、`music-2.6`、`music-cover`。
 
+渠道也可以改为指向 OpenAI 兼容中转，承载文本、语音合成、语音识别和图片生成（见「上游类型」）。
+
 需要 new-api v1.0.0-rc.50 或更新版本（支持带 provider 部分的插件）。插件 key 为 `byaiden_minimax`。较早的海螺 2.3、02 和 01 视频模型请继续用官方的 `hailuo` 插件。
 
 ## 渠道设置
@@ -31,8 +33,29 @@ locale: zh-CN
 3. 「获取模型列表」会列出 MiniMax 为该 Key 返回的文本模型，再加上本插件的全部语音合成、语音识别、视频、图片和音乐模型（MiniMax 的模型列表只有文本模型）。Key 用不了的模型会返回 MiniMax 自己的错误，从渠道里删掉即可。
 4. 默认音色（渠道设置）：语音请求写的是 OpenAI 音色名（`alloy`、`nova` 等）或没写音色时使用的 MiniMax 音色 ID，默认 `English_Graceful_Lady`。其他音色见 MiniMax 系统音色列表。
 5. 设置价格（见「计费」）。渠道测试按钮发送的是对话请求，测试模型请选文本模型。
+6. 上游类型（渠道设置）：默认 `MiniMax 官方 API`，用于上面的全部功能；接中转时选 `OpenAI 兼容中转`（见下文）。
 
 从 1.x 升级时，插件 key、视频和图片接口以及它们的计费字段都不变，已有渠道照常工作。要提供新模型，把它们加到渠道里（获取模型列表，或手动填写）。
+
+## 上游类型：OpenAI 兼容中转
+
+渠道设置「上游类型」决定请求发往哪里：
+
+- `MiniMax 官方 API`（默认）：发往上面 API 地址处的 MiniMax 官方接口。本文其余部分都按这种类型说明。
+- `OpenAI 兼容中转`：API 地址填兼容 OpenAI 接口的中转根地址（末尾不加 `/v1`），密钥填中转的 Key，以 `Authorization: Bearer` 发送。API 地址留空或填 MiniMax 官方地址时无法保存渠道。
+
+中转渠道上：
+
+| 请求 | 发往中转的 | 计费依据 |
+| --- | --- | --- |
+| Chat Completions、Responses | `/v1/chat/completions`、`/v1/responses`，原样透传，支持流式 | 中转返回的用量 |
+| Anthropic Messages | `/v1/messages`，原样透传（需中转支持该接口） | 中转返回的用量 |
+| 语音合成 | `/v1/audio/speech`，客户端请求体原样发送（不套用 MiniMax 的 `metadata` 选项和默认音色）；`stream_format: "sse"` 时原样转发中转的事件 | `input` 的字符数，与 MiniMax 官方相同 |
+| 语音识别 | `/v1/audio/transcriptions`，客户端表单原样发送 | 中转返回的音频秒数（`usage.seconds`，或 `verbose_json` 的 `duration`）；没有时由 new-api 自行估算 |
+| 图片生成（`MiniMax-H3-Image`、`MiniMax-H3-Image-Highspeed`） | `/v1/images/generations`，带上请求的字段 | 中转返回的 OpenAI 图片用量（输入文本和图片 token、输出 token），用量字段和下面的表达式不变；中转没报告的字段按成功生成的图片数乘以请求的单张估算值 |
+| 获取模型列表 | `/v1/models` | 中转的列表原样返回 |
+
+模型名按渠道映射发送，不做改写。视频（OpenAI 视频、Responses 视频和 `/v2`）、H3-Context-IR、重生成、取消和删除、图片编辑、H3-Image-Context-IR 和音乐没有能保持计费正确的 OpenAI 接口：在中转渠道上会直接报错（错误信息写明上游类型），不会预扣。这些请求请用上游类型为 MiniMax 官方 API 的渠道。Responses 视频请求得到的是网关通用的 400「Invalid task protocol request」，而不是上述提示（网关对该协议不转发插件的错误信息），同样不计费。New API 渠道（类型 60，见下文）不受此设置影响。
 
 ## 模型与接口
 
@@ -117,19 +140,20 @@ MiniMax 语音合成标价为每万字符 3.5 元（hd）和 2 元（turbo），
 
 | 模型 | 表达式（人民币标价数字） |
 | --- | --- |
-| `MiniMax-H3` | `u("resolution") == "2K" ? tier("2K", u("seconds") * 0.8 + u("input_video_seconds") * 0.8 + max(u("input_images") - 5, 0) * 0.2) : tier("768P", u("seconds") * 0.5 + u("input_video_seconds") * 0.5 + max(u("input_images") - 5, 0) * 0.2)` |
-| `MiniMax-H3-Highspeed` | `u("resolution") == "768P" ? tier("768P", u("seconds") * 0.4 + u("input_video_seconds") * 0.4 + max(u("input_images") - 5, 0) * 0.2) : tier("480P", u("seconds") * 0.26 + u("input_video_seconds") * 0.26 + max(u("input_images") - 5, 0) * 0.2)` |
-| `MiniMax-H3-Lite` | `u("resolution") == "768P" ? tier("768P", u("seconds") * 0.26 + u("input_video_seconds") * 0.26 + max(u("input_images") - 5, 0) * 0.13) : tier("480P", u("seconds") * 0.16 + u("input_video_seconds") * 0.16 + max(u("input_images") - 5, 0) * 0.13)` |
-| `MiniMax-H3-Max` | `u("resolution") == "768P" ? tier("768P", u("seconds") * 0.5 + u("input_video_seconds") * 0.97 + max(u("input_images") - 2, 0) * 0.5) : tier("480P", u("seconds") * 0.33 + u("input_video_seconds") * 0.37 + max(u("input_images") - 2, 0) * 0.5)` |
+| `MiniMax-H3` | `u("resolution") == "2K" ? tier("2K", u("seconds") * 0.8 + u("input_video_seconds") * 0.8 + u("billable_input_images") * 0.2) : tier("768P", u("seconds") * 0.5 + u("input_video_seconds") * 0.5 + u("billable_input_images") * 0.2)` |
+| `MiniMax-H3-Highspeed` | `u("resolution") == "768P" ? tier("768P", u("seconds") * 0.4 + u("input_video_seconds") * 0.4 + u("billable_input_images") * 0.2) : tier("480P", u("seconds") * 0.26 + u("input_video_seconds") * 0.26 + u("billable_input_images") * 0.2)` |
+| `MiniMax-H3-Lite` | `u("resolution") == "768P" ? tier("768P", u("seconds") * 0.26 + u("input_video_seconds") * 0.26 + u("billable_input_images") * 0.13) : tier("480P", u("seconds") * 0.16 + u("input_video_seconds") * 0.16 + u("billable_input_images") * 0.13)` |
+| `MiniMax-H3-Max` | `u("resolution") == "768P" ? tier("768P", u("seconds") * 0.5 + u("input_video_seconds") * 0.97 + u("billable_input_images") * 0.5) : tier("480P", u("seconds") * 0.33 + u("input_video_seconds") * 0.37 + u("billable_input_images") * 0.5)` |
 | `MiniMax-H3-Context-IR` | `tier("base", u("context_ir_input_tokens") * 5.8 / 1000000 + u("context_ir_output_tokens") * 23 / 1000000)` |
-| `MiniMax-H3-Regeneration` | `tier("base", u("seconds") * 0.3 + u("input_video_seconds") * 0.3 + max(u("input_images") - 5, 0) * 0.15)` |
+| `MiniMax-H3-Regeneration` | `tier("base", u("seconds") * 0.3 + u("input_video_seconds") * 0.3 + u("billable_input_images") * 0.15)` |
 | `MiniMax-H3-Image` | `tier("base", u("image_input_text_tokens") * 15 / 1000000 + u("image_input_image_tokens") * 10 / 1000000 + u("image_output_tokens") * 25 / 1000000)` |
 | `MiniMax-H3-Image-Highspeed` | `tier("base", u("image_input_text_tokens") * 15 / 1000000 + u("image_input_image_tokens") * 20 / 1000000 + u("image_output_tokens") * 50 / 1000000)` |
 | `music-3.0`、`music-2.6`、`music-cover` | `tier("base", u("music_tracks") * 1)` |
 
-- 视频：成片的 `seconds` 和 `resolution`，`input_images`（MiniMax 只对前 5 张之外的图片收费，`MiniMax-H3-Max` 是前 2 张之外，所以用 `max(... - 5, 0)`；价格表无法表示 `max(...)`，模型页会显示原始表达式，扣费不受影响），`input_video_seconds`（MiniMax 报告实际时长前按 15 秒预扣）。请求没写时长按 5 秒计算（原生路径按 15 秒）；没写分辨率按 `768P`（原生路径按该模型最贵的一档）。
+- 视频：成片的 `seconds` 和 `resolution`，`billable_input_images`（MiniMax 收费的输入图片数：前 5 张之外，`MiniMax-H3-Max` 为前 2 张之外；插件按上游模型的免费额度计算，提交时算一次，结算时再按 MiniMax 报告的图片数算一次），`input_video_seconds`（MiniMax 报告实际时长前按 15 秒预扣）。请求没写时长按 5 秒计算（原生路径按 15 秒）；没写分辨率按 `768P`（原生路径按该模型最贵的一档）。
+- 插件仍上报 `input_images`（全部输入图片数），所以 2.0 用 `max(u("input_images") - 5, 0)` 的表达式扣费不变；这种写法在模型页显示为原始表达式，上面 `billable_input_images` 的写法显示为价格表。保存新写法需要插件 2.1.0（其用量结构声明了该字段）。new-api 内置的 `hailuo` 插件也声明了 `MiniMax-H3`，但没有这个字段，而模型级价格必须适用于该模型的所有插件：请把 `MiniMax-H3` 的表达式保存为本插件对该模型的单独价格（模型定价设置里按插件单独设置；对应选项 `billing_setting.plugin_billing_expr`，键为 `byaiden_minimax::MiniMax-H3`），或者模型级价格继续用 2.0 的写法。其余模型只有本插件声明。
 - Context-IR：`context_ir_input_tokens` 和 `context_ir_output_tokens`，MiniMax 报告前按 16,384 加每个素材 16,384 的输入 token、16,384 的输出 token 预扣（一个简短的文字提示词实际约 5,700 和 3,400）。
-- 重生成：2K 成片的 `seconds`，加上原任务的输入图片和输入视频（MiniMax 会再次计费）；按原任务的数据预扣，未知时按 15 秒。
+- 重生成：2K 成片的 `seconds`，加上原任务的输入图片（`billable_input_images`，前 5 张之外）和输入视频（MiniMax 会再次计费）；按原任务的数据预扣，未知时按 15 秒。
 - 图片：输入文本、参考图和输出 token，按成功生成的每张图计；按张定价时用 `image_count`。提交时先预扣估算值（每 1024 像素 1 个输出 token，每张至少 4096 个；`auto` 尺寸按 `area` 算，默认 4K）。提示词增强在 `MiniMax-H3-Image` 上只计输入文本 token，上面的表达式已经覆盖；按张定价时不收费。
 - 音乐：`music_tracks` 为成功生成的歌曲数，每首 1。
 - 取消和删除请求的用量都是 0，上面的表达式不收费；被取消的排队任务会退款。
